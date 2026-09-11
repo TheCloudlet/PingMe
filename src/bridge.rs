@@ -74,6 +74,7 @@ impl Bridge {
                 &self.control_channel_id,
                 thread_ts,
                 &self.operator_id,
+                &session.agent_cli,
             )
         };
         Some(RoutedThreadAction { session, action })

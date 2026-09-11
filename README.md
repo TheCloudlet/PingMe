@@ -45,7 +45,7 @@ In Slack, in the private channel:
 /cli-new codex my-project
 ```
 
-In that session’s thread, type normally. The bot replies `--> (Beep! PingMe received your message!)` when the prompt has been pasted into the Agent CLI. Then wait for the answer.
+In that session’s thread, type normally. The bot replies `(ping grok)` or `(ping codex)` when the prompt has been pasted into the Agent CLI. The answer arrives as `(pong grok)` or `(pong codex)`, then the body. Rejected prompts are `(reject grok busy)`, `(reject grok stale)`, `(reject grok unauthorized)`, or `(reject grok unavailable)`.
 
 Thread controls (type these as the whole message):
 

@@ -13,8 +13,8 @@ use crate::{
     MAX_SLACK_PHOTO_BYTES, PanePlacement, ProjectSetting, SessionStatus, SlackFile, ThreadAction,
     ThreadMessage, accepted_slack_photos, agent_display_name, apply_host_routing_policy,
     control_action, pane_placement, prompt_with_local_photos, render_session_status_card,
-    self_test_message, session_update_after_prompt_paste, slack_file_url_is_downloadable,
-    slack_photo_store_path,
+    self_test_message, session_update_after_agent_turn, session_update_after_prompt_paste,
+    session_update_reject, slack_file_url_is_downloadable, slack_photo_store_path,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -1031,11 +1031,7 @@ async fn handle_agent_notification(
     post_slack(
         http,
         config,
-        &format!(
-            "*{}*\n{}",
-            agent_display_name(&config.session.agent_cli),
-            slack_text(response)
-        ),
+        &session_update_after_agent_turn(&config.session.agent_cli, &slack_text(response)),
     )
     .await?;
     if write_self_test_status(
@@ -1258,10 +1254,7 @@ async fn mark_unavailable(http: &reqwest::Client, config: &mut DaemonConfig) -> 
     post_slack(
         http,
         config,
-        &format!(
-            "Not executed: {} TUI is unavailable.",
-            agent_display_name(&config.session.agent_cli),
-        ),
+        &session_update_reject(&config.session.agent_cli, "unavailable"),
     )
     .await
 }
@@ -1968,7 +1961,7 @@ mod tests {
         let action = apply_host_routing_policy(&message, routed.session, routed.action, 0.0);
 
         assert_eq!(
-            ThreadAction::Reject("Not executed: session is busy.".to_owned()),
+            ThreadAction::Reject(session_update_reject("codex", "busy")),
             action
         );
     }
@@ -1992,7 +1985,7 @@ mod tests {
             apply_host_routing_policy(&message, routed.session, routed.action, 1757221925.0);
 
         assert_eq!(
-            ThreadAction::Reject("Not executed: stale Slack input.".to_owned()),
+            ThreadAction::Reject(session_update_reject("codex", "stale")),
             action
         );
     }
@@ -2057,7 +2050,7 @@ mod tests {
         let routed = bridge.route_thread_message(&message, &sessions).unwrap();
 
         assert_eq!(
-            ThreadAction::Reject("not executed: unauthorized Slack user".to_owned()),
+            ThreadAction::Reject(session_update_reject("codex", "unauthorized")),
             routed.action
         );
     }
@@ -2078,9 +2071,10 @@ mod tests {
         for (fixture, expected) in [
             (
                 "missing_identity",
-                Some(ThreadAction::Reject(
-                    "not executed: unauthorized Slack user".to_owned(),
-                )),
+                Some(ThreadAction::Reject(session_update_reject(
+                    "codex",
+                    "unauthorized",
+                ))),
             ),
             ("bot_message", Some(ThreadAction::Ignore)),
             ("message_changed", None),

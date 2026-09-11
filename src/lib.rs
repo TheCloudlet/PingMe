@@ -229,6 +229,7 @@ pub fn thread_action(
     control_channel_id: &str,
     thread_ts: &str,
     operator_id: &str,
+    agent_cli: &str,
 ) -> ThreadAction {
     if message.channel_id != control_channel_id || message.thread_ts != Some(thread_ts) {
         return ThreadAction::Ignore;
@@ -240,7 +241,7 @@ pub fn thread_action(
         return ThreadAction::Ignore;
     }
     if message.user_id != Some(operator_id) {
-        return ThreadAction::Reject("not executed: unauthorized Slack user".to_owned());
+        return ThreadAction::Reject(session_update_reject(agent_cli, "unauthorized"));
     }
 
     let text = message.text.trim();
@@ -283,11 +284,11 @@ pub fn apply_host_routing_policy(
         .and_then(|event_ts| event_ts.parse::<f64>().ok())
         .is_none_or(|event_ts| event_ts < started_at)
     {
-        return ThreadAction::Reject("Not executed: stale Slack input.".to_owned());
+        return ThreadAction::Reject(session_update_reject(&session.agent_cli, "stale"));
     }
     match action {
         ThreadAction::Prompt(_) if session.available && session.status == SessionStatus::Busy => {
-            ThreadAction::Reject("Not executed: session is busy.".to_owned())
+            ThreadAction::Reject(session_update_reject(&session.agent_cli, "busy"))
         }
         ThreadAction::Prompt(_) | ThreadAction::Stop if !session.available => {
             ThreadAction::MarkUnavailable
@@ -350,12 +351,20 @@ pub fn slack_photo_extension(mimetype: &str) -> Option<&'static str> {
 
 pub fn session_update_after_prompt_paste(paste: Result<(), String>, agent_cli: &str) -> String {
     match paste {
-        Ok(()) => "--> (Beep! PingMe received your message!)".to_owned(),
+        Ok(()) => format!("(ping {agent_cli})"),
         Err(error) => format!(
             "Not executed: failed to send prompt to {}: {error}",
             agent_display_name(agent_cli)
         ),
     }
+}
+
+pub fn session_update_after_agent_turn(agent_cli: &str, response: &str) -> String {
+    format!("(pong {agent_cli})\n{response}")
+}
+
+pub fn session_update_reject(agent_cli: &str, reason: &str) -> String {
+    format!("(reject {agent_cli} {reason})")
 }
 
 pub fn prompt_with_local_photos(text: &str, paths: &[String]) -> String {
@@ -1239,7 +1248,8 @@ cwd = "/work/pingme"
                 &message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
 
@@ -1253,7 +1263,8 @@ cwd = "/work/pingme"
                 &wrong_thread,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
 
@@ -1262,12 +1273,13 @@ cwd = "/work/pingme"
             ..message.clone()
         };
         assert_eq!(
-            ThreadAction::Reject("not executed: unauthorized Slack user".to_owned()),
+            ThreadAction::Reject(session_update_reject("codex", "unauthorized")),
             thread_action(
                 &wrong_user,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
 
@@ -1281,7 +1293,8 @@ cwd = "/work/pingme"
                 &bot_message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
 
@@ -1297,7 +1310,8 @@ cwd = "/work/pingme"
                 &bot_without_subtype,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1324,7 +1338,8 @@ cwd = "/work/pingme"
                 },
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
         assert_eq!(
@@ -1336,7 +1351,8 @@ cwd = "/work/pingme"
                 },
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
         assert_eq!(
@@ -1348,7 +1364,8 @@ cwd = "/work/pingme"
                 },
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
         assert_eq!(
@@ -1360,7 +1377,8 @@ cwd = "/work/pingme"
                 },
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1394,7 +1412,8 @@ cwd = "/work/pingme"
                 &message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1418,7 +1437,8 @@ cwd = "/work/pingme"
                 &message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1442,7 +1462,8 @@ cwd = "/work/pingme"
                 &message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1466,7 +1487,8 @@ cwd = "/work/pingme"
                 &message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1492,12 +1514,45 @@ cwd = "/work/pingme"
     #[test]
     fn successful_prompt_paste_posts_received_session_update() {
         assert_eq!(
-            "--> (Beep! PingMe received your message!)",
+            "(ping codex)",
             session_update_after_prompt_paste(Ok(()), "codex")
         );
         assert_eq!(
-            "--> (Beep! PingMe received your message!)",
+            "(ping grok)",
             session_update_after_prompt_paste(Ok(()), "grok")
+        );
+    }
+
+    #[test]
+    fn agent_turn_posts_pong_session_update() {
+        assert_eq!(
+            "(pong grok)\nhello",
+            session_update_after_agent_turn("grok", "hello")
+        );
+        assert_eq!(
+            "(pong codex)\nhello",
+            session_update_after_agent_turn("codex", "hello")
+        );
+    }
+
+    #[test]
+    fn policy_rejects_post_lisp_session_updates() {
+        assert_eq!("(reject grok busy)", session_update_reject("grok", "busy"));
+        assert_eq!(
+            "(reject grok stale)",
+            session_update_reject("grok", "stale")
+        );
+        assert_eq!(
+            "(reject grok unauthorized)",
+            session_update_reject("grok", "unauthorized")
+        );
+        assert_eq!(
+            "(reject grok unavailable)",
+            session_update_reject("grok", "unavailable")
+        );
+        assert_eq!(
+            "(reject codex busy)",
+            session_update_reject("codex", "busy")
         );
     }
 
@@ -1508,7 +1563,7 @@ cwd = "/work/pingme"
             "Not executed: failed to send prompt to Codex: pane is dead",
             update
         );
-        assert!(!update.contains("Beep!"));
+        assert!(!update.contains("(ping"));
     }
 
     #[test]
@@ -1517,7 +1572,7 @@ cwd = "/work/pingme"
             channel_id: "C_TEST_CONTROL",
             thread_ts: Some("1757221923.123456"),
             user_id: Some("U_BRIDGE_BOT"),
-            text: "--> (Beep! PingMe received your message!)",
+            text: "(ping grok)",
             has_subtype: false,
             is_bot: true,
             event_ts: Some("1757221925.000000"),
@@ -1530,7 +1585,8 @@ cwd = "/work/pingme"
                 &message,
                 "C_TEST_CONTROL",
                 "1757221923.123456",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
+                "codex",
             )
         );
     }
@@ -1572,7 +1628,7 @@ cwd = "/work/pingme"
                     ..command
                 },
                 "C_TEST_CONTROL",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
             )
         );
         assert_eq!(
@@ -1583,7 +1639,7 @@ cwd = "/work/pingme"
                     ..command
                 },
                 "C_TEST_CONTROL",
-                "U_TEST_OPERATOR"
+                "U_TEST_OPERATOR",
             )
         );
     }

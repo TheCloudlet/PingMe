@@ -247,7 +247,7 @@ The Host daemon is the background process that listens to Slack. `pingme daemon`
    (Use `pingme codex` if that is the Agent CLI you installed.)
 6. Slack gets a new thread. The root message is the session card.
 7. In that thread, type a short sentence and send.
-8. You should see `--> (Beep! PingMe received your message!)` in the thread, and the same sentence appear in the Agent CLI on this computer.
+8. You should see `(ping grok)` in the thread, and the same sentence appear in the Agent CLI on this computer. The answer arrives as `(pong grok)`, then the body.
 
 If the daemon is down: local `pingme grok` still opens the Agent CLI (unbridged if Slack setup cannot run). Slack messages sent while it is down are **not** replayed later.
 
