@@ -8,6 +8,7 @@ use std::os::unix::net::UnixStream as StdUnixStream;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
+use crate::slack_socket::SlackSocketMode;
 use crate::{
     AgentSession, Bridge, ControlAction, ControlCommand, HostSettings, LocalServices,
     MAX_SLACK_PHOTO_BYTES, PanePlacement, ProjectSetting, SessionStatus, SlackFile, ThreadAction,
@@ -16,12 +17,10 @@ use crate::{
     self_test_message, session_update_after_agent_turn, session_update_after_prompt_paste,
     session_update_reject, slack_file_url_is_downloadable, slack_photo_store_path,
 };
-use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use tokio::io::AsyncReadExt;
 use tokio::net::UnixListener;
 use tokio::time::MissedTickBehavior;
-use tokio_tungstenite::tungstenite::Message;
 
 pub struct RealServices {
     bot_token: String,
@@ -236,11 +235,19 @@ fn ensure_host_daemon() -> Result<(), String> {
         .display()
         .to_string();
     let _ = fs::remove_file(&ready_file);
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(format!("{socket_path}.log"))
+        .map_err(|error| format!("failed to open Host daemon log: {error}"))?;
+    let log_file_stderr = log_file
+        .try_clone()
+        .map_err(|error| format!("failed to duplicate Host daemon log handle: {error}"))?;
     let mut child = Command::new(executable)
         .args(["daemon", "--ready-file", &ready_file])
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(log_file_stderr))
         .spawn()
         .map_err(|error| format!("failed to spawn daemon: {error}"))?;
     for _ in 0..20 {
@@ -355,7 +362,6 @@ async fn run_host_daemon(args: &[String]) -> Result<(), String> {
     let bot_token = env::var("SLACK_BOT_TOKEN")
         .map_err(|_| "missing environment variable SLACK_BOT_TOKEN".to_owned())?;
     recover_agent_sessions(&setting, &bot_token)?;
-    let started_at = unix_seconds();
     let http = reqwest::Client::new();
     let notify_socket_path = host_notify_socket_path()?;
     let _daemon_lock = try_lock_host_daemon(&notify_socket_path)?;
@@ -368,11 +374,10 @@ async fn run_host_daemon(args: &[String]) -> Result<(), String> {
     fs::set_permissions(&notify_socket_path, fs::Permissions::from_mode(0o600))
         .map_err(|error| format!("failed to protect notify socket: {error}"))?;
 
-    let socket_url = open_slack_socket(&http, &app_token).await?;
-    let (websocket, _) = tokio_tungstenite::connect_async(socket_url)
-        .await
-        .map_err(|error| format!("failed to connect Slack Socket Mode: {error}"))?;
-    let (mut slack_write, mut slack_read) = websocket.split();
+    // Notify socket is the Host's local presence. Slack Socket Mode connects
+    // in the background so a downed Slack handshake cannot take the daemon
+    // (or Agent CLI notify) down with it.
+    let mut slack = SlackSocketMode::connect(http.clone(), app_token);
     if let Ok(ready_file) = arg_value(args, "--ready-file") {
         fs::write(&ready_file, "ready\n")
             .map_err(|error| format!("failed to write daemon ready file: {error}"))?;
@@ -383,51 +388,30 @@ async fn run_host_daemon(args: &[String]) -> Result<(), String> {
 
     loop {
         tokio::select! {
-            incoming = slack_read.next() => {
-                let Some(incoming) = incoming else { break };
-                let message = incoming.map_err(|error| format!("Slack websocket error: {error}"))?;
-                match message {
-                    Message::Text(text) => {
-                        let Ok(envelope) = serde_json::from_str::<Value>(&text) else {
-                            continue;
-                        };
-                        if let Some(envelope_id) = envelope.get("envelope_id").and_then(Value::as_str) {
-                            slack_write
-                                .send(Message::Text(
-                                    serde_json::json!({ "envelope_id": envelope_id })
-                                        .to_string()
-                                        .into(),
-                                ))
-                                .await
-                                .map_err(|error| format!("failed to ack Slack event: {error}"))?;
-                        }
-                        if envelope.get("type").and_then(Value::as_str) == Some("disconnect") {
-                            break;
-                        }
-                        let _ = handle_control_command(&http, &bot_token, &setting, &envelope).await;
-                        if let Err(error) = handle_slack_event(
-                            &http,
-                            &bot_token,
-                            &setting,
-                            started_at,
-                            &envelope,
-                        ).await {
-                            let _ = post_envelope_error(
-                                &http,
-                                &bot_token,
-                                &setting,
-                                &envelope,
-                                &error,
-                            ).await;
-                            eprintln!("failed to handle Slack event: {error}");
-                        }
-                    }
-                    Message::Ping(payload) => slack_write
-                        .send(Message::Pong(payload))
-                        .await
-                        .map_err(|error| format!("failed to pong Slack websocket: {error}"))?,
-                    Message::Close(_) => break,
-                    _ => {}
+            incoming = slack.recv() => {
+                let Some(envelope) = incoming else {
+                    eprintln!(
+                        "Slack Socket Mode driver ended ({:?})",
+                        slack.state()
+                    );
+                    return Ok(());
+                };
+                let _ = handle_control_command(&http, &bot_token, &setting, &envelope).await;
+                if let Err(error) = handle_slack_event(
+                    &http,
+                    &bot_token,
+                    &setting,
+                    slack.epoch(),
+                    &envelope,
+                ).await {
+                    let _ = post_envelope_error(
+                        &http,
+                        &bot_token,
+                        &setting,
+                        &envelope,
+                        &error,
+                    ).await;
+                    eprintln!("failed to handle Slack event: {error}");
                 }
             }
             accepted = notify_listener.accept() => {
@@ -462,8 +446,6 @@ async fn run_host_daemon(args: &[String]) -> Result<(), String> {
             }
         }
     }
-    let _ = fs::remove_file(&notify_socket_path);
-    Ok(())
 }
 
 // ponytail: O(n^2) over local Sessions; index by pane ID if a Host reaches hundreds.
@@ -635,6 +617,7 @@ async fn handle_control_command(
     let ControlAction::NewSession {
         agent_cli: agent,
         project_name,
+        agent_args,
     } = action
     else {
         return match action {
@@ -669,7 +652,7 @@ async fn handle_control_command(
         .await;
     };
 
-    match launch_remote_agent(http, bot_token, setting, project, &agent).await {
+    match launch_remote_agent(http, bot_token, setting, project, &agent, agent_args).await {
         Ok(launch) => {
             let warning = launch
                 .warning
@@ -701,12 +684,13 @@ async fn launch_remote_agent(
     setting: &HostSettings,
     project: &ProjectSetting,
     agent_cli: &str,
+    agent_args: Vec<String>,
 ) -> Result<RemoteLaunch, String> {
     let mut services = RealServices::new(bot_token.to_owned());
     let session_name = tokio::task::block_in_place(|| {
         services.available_session_name(&format!("{agent_cli}-{}", project.name))
     })?;
-    let session = AgentSession::for_launch(
+    let mut session = AgentSession::for_launch(
         session_name,
         agent_cli,
         &setting.host.name,
@@ -716,6 +700,7 @@ async fn launch_remote_agent(
         &setting.slack.operator_id,
         pane_placement(false, env::var("TMUX").is_ok()),
     );
+    session.agent_args = agent_args;
     let session = tokio::task::block_in_place(|| services.create_session_thread(session))?;
     let failed_session = session.clone();
     let bridge = Bridge::new(
@@ -834,24 +819,6 @@ fn arg_value(args: &[String], name: &str) -> Result<String, String> {
         .find(|pair| pair[0] == name)
         .map(|pair| pair[1].clone())
         .ok_or_else(|| format!("missing daemon argument {name}"))
-}
-
-async fn open_slack_socket(http: &reqwest::Client, app_token: &str) -> Result<String, String> {
-    let response: Value = http
-        .post("https://slack.com/api/apps.connections.open")
-        .bearer_auth(app_token)
-        .send()
-        .await
-        .map_err(|error| format!("Slack apps.connections.open failed: {error}"))?
-        .json()
-        .await
-        .map_err(|error| format!("Slack apps.connections.open returned invalid JSON: {error}"))?;
-    slack_ok(&response)?;
-    response
-        .get("url")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| "Slack response omitted WebSocket URL".to_owned())
 }
 
 async fn handle_slack_event(
@@ -1426,13 +1393,6 @@ fn mark_session_unavailable(
     services.update_session_thread(&session)
 }
 
-fn unix_seconds() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs_f64())
-        .unwrap_or_default()
-}
-
 fn session_pane(session: &AgentSession) -> Result<&str, String> {
     session
         .pane_id
@@ -1731,28 +1691,9 @@ fn agent_command(
     let command = if session.agent_cli == "grok" {
         grok_command(session, notify_socket_path, notify_token)
     } else {
-        match (
-            session.thread_ts.as_deref(),
-            notify_socket_path,
-            notify_token,
-            notify_arg(),
-        ) {
-            (Some(thread_ts), Some(socket_path), Some(token), Some(notify)) => format!(
-                "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} PINGME_NOTIFY_SOCKET={} PINGME_NOTIFY_TOKEN={} codex -c {}",
-                shell_quote(&session.session_name),
-                shell_quote(thread_ts),
-                shell_quote(socket_path),
-                shell_quote(token),
-                shell_quote(&format!("notify={notify}")),
-            ),
-            (Some(thread_ts), _, _, _) => format!(
-                "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} codex",
-                shell_quote(&session.session_name),
-                shell_quote(thread_ts),
-            ),
-            (None, _, _, _) => "exec codex".to_owned(),
-        }
+        codex_command(session, notify_socket_path, notify_token)
     };
+    let command = append_agent_args(command, &session.agent_args);
     match notify_token {
         Some(token) => format!(
             "tmux wait-for {}; {command}",
@@ -1762,8 +1703,44 @@ fn agent_command(
     }
 }
 
+fn append_agent_args(mut command: String, args: &[String]) -> String {
+    for arg in args {
+        command.push(' ');
+        command.push_str(&shell_quote(arg));
+    }
+    command
+}
+
 fn agent_start_channel(token: &str) -> String {
     format!("pingme-start-{token}")
+}
+
+fn codex_command(
+    session: &AgentSession,
+    notify_socket_path: Option<&str>,
+    notify_token: Option<&str>,
+) -> String {
+    match (
+        session.thread_ts.as_deref(),
+        notify_socket_path,
+        notify_token,
+        notify_arg(),
+    ) {
+        (Some(thread_ts), Some(socket_path), Some(token), Some(notify)) => format!(
+            "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} PINGME_NOTIFY_SOCKET={} PINGME_NOTIFY_TOKEN={} codex -c {}",
+            shell_quote(&session.session_name),
+            shell_quote(thread_ts),
+            shell_quote(socket_path),
+            shell_quote(token),
+            shell_quote(&format!("notify={notify}")),
+        ),
+        (Some(thread_ts), _, _, _) => format!(
+            "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} codex",
+            shell_quote(&session.session_name),
+            shell_quote(thread_ts),
+        ),
+        (None, _, _, _) => "exec codex".to_owned(),
+    }
 }
 
 fn grok_command(
@@ -2324,6 +2301,95 @@ mod tests {
         session.thread_ts = Some("100.1".to_owned());
         let command = agent_command(&session, Some("/tmp/pingme.sock"), Some("secret"));
 
+        assert!(command.starts_with("tmux wait-for 'pingme-start-secret'; exec env "));
+    }
+
+    #[test]
+    fn grok_launch_command_appends_resume_args() {
+        let mut session = AgentSession::for_launch(
+            "grok-pingme",
+            "grok",
+            "linux",
+            "project",
+            "/work/pingme",
+            "C1",
+            "U1",
+            PanePlacement::DetachedWindow,
+        );
+        session.thread_ts = Some("100.1".to_owned());
+        session.agent_args = vec![
+            "--resume".to_owned(),
+            "01a090da-d3ba-7bb1-8cc0-aab11beccab6".to_owned(),
+        ];
+        let command = agent_command(&session, Some("/tmp/pingme.sock"), Some("secret"));
+
+        assert!(
+            command.ends_with(" grok '--resume' '01a090da-d3ba-7bb1-8cc0-aab11beccab6'"),
+            "{command}"
+        );
+        assert!(command.starts_with("tmux wait-for 'pingme-start-secret'; exec env "));
+    }
+
+    #[test]
+    fn unbridged_grok_launch_command_appends_resume_args() {
+        let mut session = AgentSession::for_launch(
+            "grok-unbridged",
+            "grok",
+            "",
+            "unknown",
+            "/work/pingme",
+            "",
+            "",
+            PanePlacement::ReuseCurrentPane,
+        );
+        session.agent_args = vec![
+            "--resume".to_owned(),
+            "01a090da-d3ba-7bb1-8cc0-aab11beccab6".to_owned(),
+        ];
+        let command = agent_command(&session, None, None);
+
+        assert_eq!(
+            "exec grok '--resume' '01a090da-d3ba-7bb1-8cc0-aab11beccab6'",
+            command
+        );
+    }
+
+    #[test]
+    fn unbridged_codex_launch_command_forwards_trailing_args() {
+        let mut session = AgentSession::for_launch(
+            "codex-pingme",
+            "codex",
+            "linux",
+            "project",
+            "/work/pingme",
+            "C1",
+            "U1",
+            PanePlacement::DetachedWindow,
+        );
+        session.agent_args = vec!["resume".to_owned(), "session-id".to_owned()];
+        let command = agent_command(&session, None, None);
+
+        assert_eq!("exec codex 'resume' 'session-id'", command);
+    }
+
+    #[test]
+    fn bridged_codex_forwards_trailing_args_after_notify() {
+        let mut session = AgentSession::for_launch(
+            "codex-pingme",
+            "codex",
+            "linux",
+            "project",
+            "/work/pingme",
+            "C1",
+            "U1",
+            PanePlacement::DetachedWindow,
+        );
+        session.thread_ts = Some("100.1".to_owned());
+        session.agent_args = vec!["resume".to_owned(), "session-id".to_owned()];
+        let command = agent_command(&session, Some("/tmp/pingme.sock"), Some("secret"));
+
+        assert!(command.contains(" codex -c "), "{command}");
+        assert!(command.ends_with(" 'resume' 'session-id'"), "{command}");
         assert!(command.starts_with("tmux wait-for 'pingme-start-secret'; exec env "));
     }
 

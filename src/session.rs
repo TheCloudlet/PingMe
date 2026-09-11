@@ -56,6 +56,8 @@ impl SessionStatus {
 pub struct AgentSession {
     pub session_name: String,
     pub agent_cli: String,
+    /// Launch-only Agent CLI arguments. Not stored in the live tmux registry.
+    pub agent_args: Vec<String>,
     pub host: String,
     pub project: String,
     pub cwd: String,
@@ -124,6 +126,7 @@ impl AgentSession {
         Self {
             session_name: session_name.into(),
             agent_cli: agent_cli.into(),
+            agent_args: Vec::new(),
             host: host.into(),
             project: project.into(),
             cwd: cwd.into(),
@@ -184,6 +187,7 @@ impl AgentSession {
         Ok(Some(Self {
             session_name,
             agent_cli,
+            agent_args: Vec::new(),
             host: field(&fields, "host"),
             project: field(&fields, "project"),
             cwd: field(&fields, "cwd"),

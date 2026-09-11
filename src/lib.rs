@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 mod bridge;
 mod host;
 mod session;
+mod slack_socket;
 
 pub use bridge::{Bridge, RoutedThreadAction, StartedSession};
 pub use host::{RealServices, attach_or_switch_agent_tui, run_daemon_process, run_notify_process};
@@ -69,6 +70,7 @@ pub enum ControlAction {
     NewSession {
         agent_cli: String,
         project_name: String,
+        agent_args: Vec<String>,
     },
     Ignore,
     Reject(String),
@@ -106,7 +108,7 @@ pub fn run_cli_with_services(
     };
 
     match command {
-        "codex" | "grok" => launch_agent(command, setting_toml, env, services),
+        "codex" | "grok" => launch_agent(command, &args[2..], setting_toml, env, services),
         "list" | "attach" | "cleanup" => {
             manage_or_defer(command, args, setting_toml, env, services)
         }
@@ -116,17 +118,24 @@ pub fn run_cli_with_services(
 
 fn launch_agent(
     agent_cli: &str,
+    agent_args: &[&str],
     setting_toml: &str,
     env: &BTreeMap<&str, &str>,
     services: &mut dyn LocalServices,
 ) -> CliResult {
+    let agent_args = match parse_agent_args(agent_args) {
+        Ok(agent_args) => agent_args,
+        Err(message) => return fail(message),
+    };
     let setting = match parse_setting(setting_toml) {
         Ok(setting) => setting,
-        Err(message) => return launch_unbridged_agent(agent_cli, env, services, message),
+        Err(message) => {
+            return launch_unbridged_agent(agent_cli, agent_args, env, services, message);
+        }
     };
 
     if let Err(message) = require_slack_tokens(env) {
-        return launch_unbridged_agent(agent_cli, env, services, message);
+        return launch_unbridged_agent(agent_cli, agent_args, env, services, message);
     }
 
     let cwd = current_dir(env);
@@ -160,6 +169,7 @@ fn launch_agent(
         &setting.slack.operator_id,
         pane_placement(true, env.contains_key("TMUX")),
     );
+    session.agent_args.clone_from(&agent_args);
     if let Some(status_file) = status_file {
         session.enable_self_test(status_file);
     }
@@ -169,6 +179,7 @@ fn launch_agent(
         Err(error) => {
             return launch_unbridged_agent(
                 agent_cli,
+                agent_args,
                 env,
                 services,
                 format!("failed to create Slack Session Thread: {error}\n"),
@@ -424,11 +435,14 @@ pub fn control_action(
     let agent_cli = words.next().unwrap_or("").to_owned();
     let project_name = words.next().unwrap_or("").to_owned();
     if agent_cli.is_empty() || project_name.is_empty() {
-        return ControlAction::Reject("usage: /cli-new <codex|grok> <project>".to_owned());
+        return ControlAction::Reject(
+            "usage: /cli-new <codex|grok> <project> [agent-args...]".to_owned(),
+        );
     }
     ControlAction::NewSession {
         agent_cli,
         project_name,
+        agent_args: words.map(str::to_owned).collect(),
     }
 }
 
@@ -471,11 +485,12 @@ fn thread_identity(session: &AgentSession) -> String {
 
 fn launch_unbridged_agent(
     agent_cli: &str,
+    agent_args: Vec<String>,
     env: &BTreeMap<&str, &str>,
     services: &mut dyn LocalServices,
     warning: String,
 ) -> CliResult {
-    let session = AgentSession::for_launch(
+    let mut session = AgentSession::for_launch(
         services
             .available_session_name(&format!("{agent_cli}-unbridged"))
             .unwrap_or_else(|_| format!("{agent_cli}-unbridged")),
@@ -487,8 +502,17 @@ fn launch_unbridged_agent(
         "",
         pane_placement(true, env.contains_key("TMUX")),
     );
+    session.agent_args = agent_args;
 
     show_unbridged_agent(services, session, warning)
+}
+
+fn parse_agent_args(args: &[&str]) -> Result<Vec<String>, String> {
+    if args.iter().any(|arg| arg.contains(['\t', '\n', '\r'])) {
+        Err("Agent CLI arguments contain unsupported control characters\n".to_owned())
+    } else {
+        Ok(args.iter().map(|arg| (*arg).to_owned()).collect())
+    }
 }
 
 fn manage_or_defer(
@@ -563,7 +587,8 @@ fn parse_setting(setting_toml: &str) -> Result<HostSettings, String> {
 }
 
 fn usage() -> String {
-    "usage: pingme <codex|grok|list|attach <session-name>|cleanup>\n".to_owned()
+    "usage: pingme <codex|grok> [agent-args...] | pingme <list|attach <session-name>|cleanup>\n"
+        .to_owned()
 }
 
 pub fn agent_display_name(agent_cli: &str) -> &str {
@@ -1616,7 +1641,8 @@ cwd = "/work/pingme"
         assert_eq!(
             ControlAction::NewSession {
                 agent_cli: "codex".to_owned(),
-                project_name: "pingme".to_owned()
+                project_name: "pingme".to_owned(),
+                agent_args: Vec::new(),
             },
             control_action(&command, "C_TEST_CONTROL", "U_TEST_OPERATOR")
         );
@@ -1781,5 +1807,136 @@ cwd = "/work/pingme"
         assert_eq!(2, result.exit_code);
         assert!(result.stderr.contains("unknown command: wat"));
         assert!(result.stderr.contains("usage: pingme"));
+    }
+
+    #[test]
+    fn local_codex_forwards_resume_args_to_the_spawned_agent() {
+        let mut services = FakeServices::default();
+        let result = run_cli_with_services(
+            &["pingme", "codex", "resume", "session-id"],
+            SETTING,
+            &env_with_tokens(),
+            &mut services,
+        );
+
+        assert_eq!(0, result.exit_code);
+        assert_eq!(
+            vec!["resume".to_owned(), "session-id".to_owned()],
+            services.spawned_session.unwrap().agent_args
+        );
+    }
+
+    #[test]
+    fn local_grok_forwards_resume_args_to_the_spawned_agent() {
+        let mut services = FakeServices::default();
+        let result = run_cli_with_services(
+            &[
+                "pingme",
+                "grok",
+                "--resume",
+                "01a090da-d3ba-7bb1-8cc0-aab11beccab6",
+            ],
+            SETTING,
+            &env_with_tokens(),
+            &mut services,
+        );
+
+        assert_eq!(0, result.exit_code);
+        assert_eq!(
+            vec![
+                "--resume".to_owned(),
+                "01a090da-d3ba-7bb1-8cc0-aab11beccab6".to_owned()
+            ],
+            services.spawned_session.unwrap().agent_args
+        );
+        assert_eq!(
+            vec![
+                "--resume".to_owned(),
+                "01a090da-d3ba-7bb1-8cc0-aab11beccab6".to_owned()
+            ],
+            result.attachment.unwrap().agent_args
+        );
+    }
+
+    #[test]
+    fn unbridged_local_grok_forwards_resume_args() {
+        let mut services = FakeServices::default();
+        let result = run_cli_with_services(
+            &[
+                "pingme",
+                "grok",
+                "--resume",
+                "01a090da-d3ba-7bb1-8cc0-aab11beccab6",
+            ],
+            "",
+            &env_with_tokens(),
+            &mut services,
+        );
+
+        assert_eq!(0, result.exit_code);
+        assert_eq!(
+            vec![
+                "--resume".to_owned(),
+                "01a090da-d3ba-7bb1-8cc0-aab11beccab6".to_owned()
+            ],
+            services.spawned_session.unwrap().agent_args
+        );
+    }
+
+    #[test]
+    fn rejects_agent_args_with_control_characters() {
+        let result = run_cli(
+            &["pingme", "grok", "--resume", "id\nnext"],
+            SETTING,
+            &env_with_tokens(),
+        );
+
+        assert_eq!(2, result.exit_code);
+        assert!(
+            result
+                .stderr
+                .contains("Agent CLI arguments contain unsupported control characters")
+        );
+    }
+
+    #[test]
+    fn cli_new_forwards_codex_resume_after_the_project() {
+        let command = ControlCommand {
+            command: "/cli-new",
+            channel_id: "C_TEST_CONTROL",
+            user_id: "U_TEST_OPERATOR",
+            text: "codex pingme resume session-id",
+        };
+
+        assert_eq!(
+            ControlAction::NewSession {
+                agent_cli: "codex".to_owned(),
+                project_name: "pingme".to_owned(),
+                agent_args: vec!["resume".to_owned(), "session-id".to_owned()],
+            },
+            control_action(&command, "C_TEST_CONTROL", "U_TEST_OPERATOR")
+        );
+    }
+
+    #[test]
+    fn cli_new_forwards_agent_args_after_the_project() {
+        let command = ControlCommand {
+            command: "/cli-new",
+            channel_id: "C_TEST_CONTROL",
+            user_id: "U_TEST_OPERATOR",
+            text: "grok pingme --resume 01a090da-d3ba-7bb1-8cc0-aab11beccab6",
+        };
+
+        assert_eq!(
+            ControlAction::NewSession {
+                agent_cli: "grok".to_owned(),
+                project_name: "pingme".to_owned(),
+                agent_args: vec![
+                    "--resume".to_owned(),
+                    "01a090da-d3ba-7bb1-8cc0-aab11beccab6".to_owned()
+                ],
+            },
+            control_action(&command, "C_TEST_CONTROL", "U_TEST_OPERATOR")
+        );
     }
 }
