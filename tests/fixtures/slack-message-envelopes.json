@@ -1,0 +1,209 @@
+{
+  "_provenance": "Sanitized from Control Channel message metadata captured 2026-09-11; Socket Mode wrappers follow Slack's events_api schema.",
+  "operator": {
+    "envelope_id": "envelope-operator",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "token": "redacted",
+      "team_id": "T_RECORDED",
+      "api_app_id": "A_RECORDED",
+      "event": {
+        "type": "message",
+        "user": "U_OPERATOR",
+        "text": "inspect the failure",
+        "ts": "1757221924.000000",
+        "client_msg_id": "message-operator",
+        "team": "T_RECORDED",
+        "thread_ts": "1757221923.123456",
+        "parent_user_id": "U_BRIDGE_BOT",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221924.000000",
+        "channel_type": "channel"
+      },
+      "type": "event_callback",
+      "event_id": "event-operator",
+      "event_time": 1757221924
+    }
+  },
+  "operator_stop": {
+    "envelope_id": "envelope-operator-stop",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "user": "U_OPERATOR",
+        "text": "cli-stop",
+        "ts": "1757221924.100000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221924.100000",
+        "channel_type": "channel"
+      },
+      "type": "event_callback"
+    }
+  },
+  "other_member": {
+    "envelope_id": "envelope-other-member",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "user": "U_OTHER",
+        "text": "run this",
+        "ts": "1757221925.000000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221925.000000",
+        "channel_type": "channel"
+      },
+      "type": "event_callback"
+    }
+  },
+  "missing_identity": {
+    "envelope_id": "envelope-missing-identity",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "text": "run this",
+        "ts": "1757221926.000000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221926.000000"
+      },
+      "type": "event_callback"
+    }
+  },
+  "bot_message": {
+    "envelope_id": "envelope-bot",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "subtype": "bot_message",
+        "bot_id": "B_BRIDGE",
+        "text": "bridge update",
+        "ts": "1757221927.000000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221927.000000"
+      },
+      "type": "event_callback"
+    }
+  },
+  "message_changed": {
+    "envelope_id": "envelope-message-changed",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "subtype": "message_changed",
+        "channel": "C_CONTROL",
+        "ts": "1757221928.000000",
+        "event_ts": "1757221928.000000",
+        "message": {
+          "type": "message",
+          "user": "U_OPERATOR",
+          "text": "edited text",
+          "thread_ts": "1757221923.123456"
+        }
+      },
+      "type": "event_callback"
+    }
+  },
+  "operator_png_file_share": {
+    "envelope_id": "envelope-operator-png",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "subtype": "file_share",
+        "user": "U_OPERATOR",
+        "text": "",
+        "ts": "1757221929.000000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221929.000000",
+        "files": [
+          {
+            "id": "F123PNG",
+            "name": "shot.png",
+            "mimetype": "image/png",
+            "filetype": "png",
+            "size": 1024,
+            "url_private": "https://files.slack.com/files-pri/T_RECORDED/F123PNG/shot.png",
+            "url_private_download": "https://files.slack.com/files-pri/T_RECORDED/F123PNG/download/shot.png",
+            "mode": "hosted"
+          }
+        ]
+      },
+      "type": "event_callback"
+    }
+  },
+  "operator_jpeg_caption": {
+    "envelope_id": "envelope-operator-jpeg",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "user": "U_OPERATOR",
+        "text": "what is wrong here",
+        "ts": "1757221930.000000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221930.000000",
+        "files": [
+          {
+            "id": "F123JPG",
+            "name": "photo.jpg",
+            "mimetype": "image/jpeg",
+            "filetype": "jpg",
+            "size": 2048,
+            "url_private": "https://files.slack.com/files-pri/T_RECORDED/F123JPG/photo.jpg",
+            "url_private_download": "https://files.slack.com/files-pri/T_RECORDED/F123JPG/download/photo.jpg",
+            "mode": "hosted"
+          }
+        ]
+      },
+      "type": "event_callback"
+    }
+  },
+  "operator_pdf": {
+    "envelope_id": "envelope-operator-pdf",
+    "type": "events_api",
+    "accepts_response_payload": false,
+    "payload": {
+      "event": {
+        "type": "message",
+        "subtype": "file_share",
+        "user": "U_OPERATOR",
+        "text": "read this",
+        "ts": "1757221931.000000",
+        "thread_ts": "1757221923.123456",
+        "channel": "C_CONTROL",
+        "event_ts": "1757221931.000000",
+        "files": [
+          {
+            "id": "F123PDF",
+            "name": "notes.pdf",
+            "mimetype": "application/pdf",
+            "filetype": "pdf",
+            "size": 4096,
+            "url_private": "https://files.slack.com/files-pri/T_RECORDED/F123PDF/notes.pdf",
+            "url_private_download": "https://files.slack.com/files-pri/T_RECORDED/F123PDF/download/notes.pdf",
+            "mode": "hosted"
+          }
+        ]
+      },
+      "type": "event_callback"
+    }
+  }
+}
