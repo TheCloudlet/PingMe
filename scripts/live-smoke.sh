@@ -154,7 +154,7 @@ busy_rejections=$(printf '%s' "$replies" | jq \
     '[.messages[] | select(.text == "Not executed: session is busy.")] | length') \
     || fail 'failed to inspect Busy rejection'
 beeps=$(printf '%s' "$replies" | jq \
-    '[.messages[] | select(.text == "--> (Beep! Cli received your message!)")] | length') \
+    '[.messages[] | select(.text == "--&gt; (Beep! Cli received your message!)")] | length') \
     || fail 'failed to inspect prompt receipt Beep'
 expected_response=$(printf '*%s*\nroundtrip-ok' "$agent_name")
 final_responses=$(printf '%s' "$replies" | jq --arg expected "$expected_response" \
