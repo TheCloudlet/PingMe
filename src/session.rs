@@ -54,26 +54,28 @@ impl SessionStatus {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentSession {
-    session_name: String,
-    agent_cli: String,
-    host: String,
-    project: String,
-    cwd: String,
-    control_channel: String,
-    operator: String,
-    status: SessionStatus,
-    placement: Option<PanePlacement>,
-    thread_ts: Option<String>,
-    thread_permalink: Option<String>,
-    pane_id: Option<String>,
-    tmux_session: Option<String>,
-    tmux_window: Option<String>,
-    notify_socket: Option<String>,
-    notify_token: Option<String>,
-    status_file: Option<String>,
-    last_slack_prompt: Option<String>,
-    available: bool,
-    self_test: bool,
+    pub session_name: String,
+    pub agent_cli: String,
+    pub host: String,
+    pub project: String,
+    pub cwd: String,
+    pub control_channel: String,
+    pub operator: String,
+    /// Registry-stored status. Dead panes may still store Idle; cards treat that as Unavailable.
+    pub status: SessionStatus,
+    pub placement: Option<PanePlacement>,
+    pub thread_ts: Option<String>,
+    pub thread_permalink: Option<String>,
+    pub pane_id: Option<String>,
+    pub tmux_session: Option<String>,
+    pub tmux_window: Option<String>,
+    pub notify_socket: Option<String>,
+    pub notify_token: Option<String>,
+    pub status_file: Option<String>,
+    pub last_slack_prompt: Option<String>,
+    /// Live pane. False means cards and Busy routing treat the Session as Unavailable.
+    pub available: bool,
+    pub self_test: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -227,14 +229,14 @@ impl AgentSession {
     }
 
     pub fn write_to_registry(&self) -> Result<(), String> {
-        let pane_id = self.require_pane()?;
+        let pane_id = self.registry_pane()?;
         for (key, value) in self.registry_metadata() {
             if key == "@cli_bridge_session_name" {
                 continue;
             }
             set_registry_field(pane_id, key, &value)?;
         }
-        set_registry_field(pane_id, "@cli_bridge_session_name", self.name())
+        set_registry_field(pane_id, "@cli_bridge_session_name", &self.session_name)
     }
 
     pub fn name_exists(name: &str) -> Result<bool, String> {
@@ -256,20 +258,20 @@ impl AgentSession {
 
     pub fn write_name(&mut self, name: &str) -> Result<(), String> {
         // Rename of an already-published Session; first publication goes through write_to_registry.
-        set_registry_field(self.require_pane()?, "@cli_bridge_session_name", name)?;
+        set_registry_field(self.registry_pane()?, "@cli_bridge_session_name", name)?;
         self.set_name(name);
         Ok(())
     }
 
     pub fn write_status(&mut self, status: SessionStatus) -> Result<(), String> {
-        set_registry_field(self.require_pane()?, "@cli_bridge_status", status.as_str())?;
+        set_registry_field(self.registry_pane()?, "@cli_bridge_status", status.as_str())?;
         self.set_status(status);
         Ok(())
     }
 
     pub fn write_self_test(&mut self, enabled: bool) -> Result<(), String> {
         set_registry_field(
-            self.require_pane()?,
+            self.registry_pane()?,
             "@cli_bridge_self_test",
             if enabled { "1" } else { "0" },
         )?;
@@ -279,7 +281,7 @@ impl AgentSession {
 
     pub fn write_last_slack_prompt(&mut self, fingerprint: Option<String>) -> Result<(), String> {
         set_registry_field(
-            self.require_pane()?,
+            self.registry_pane()?,
             "@cli_bridge_last_slack_prompt_fingerprint",
             fingerprint.as_deref().unwrap_or(""),
         )?;
@@ -310,51 +312,15 @@ impl AgentSession {
         format!("tmux set-option -p -u -t {pane_id} @cli_bridge_session_name")
     }
 
-    pub fn require_pane(&self) -> Result<&str, String> {
-        self.pane_id()
-            .ok_or_else(|| format!("Agent Session {} has no tmux pane", self.name()))
-    }
-
-    pub fn require_thread(&self) -> Result<&str, String> {
-        self.thread_ts()
-            .ok_or_else(|| format!("Agent Session {} has no Session Thread", self.name()))
-    }
-
-    pub fn require_tmux_window(&self) -> Result<&str, String> {
-        self.tmux_window()
-            .ok_or_else(|| format!("Agent Session {} has no tmux window", self.name()))
-    }
-
-    pub fn require_tmux_session(&self) -> Result<&str, String> {
-        self.tmux_session()
-            .ok_or_else(|| format!("Agent Session {} has no tmux session", self.name()))
+    fn registry_pane(&self) -> Result<&str, String> {
+        self.pane_id
+            .as_deref()
+            .ok_or_else(|| format!("Agent Session {} has no tmux pane", self.session_name))
     }
 
     pub fn enable_self_test(&mut self, status_file: String) {
         self.self_test = true;
         self.status_file = Some(status_file);
-    }
-
-    pub fn with_thread(mut self, ts: impl Into<String>, permalink: Option<String>) -> Self {
-        self.thread_ts = Some(ts.into());
-        self.thread_permalink = permalink;
-        self
-    }
-
-    pub fn with_spawned(
-        mut self,
-        pane_id: impl Into<String>,
-        tmux_session: Option<String>,
-        tmux_window: Option<String>,
-        notify_socket: Option<String>,
-        notify_token: Option<String>,
-    ) -> Self {
-        self.pane_id = Some(pane_id.into());
-        self.tmux_session = tmux_session;
-        self.tmux_window = tmux_window;
-        self.notify_socket = notify_socket;
-        self.notify_token = notify_token;
-        self
     }
 
     pub fn set_status(&mut self, status: SessionStatus) {
@@ -454,98 +420,6 @@ impl AgentSession {
             ("@cli_bridge_session_name", self.session_name.clone()),
         ]
     }
-
-    pub fn name(&self) -> &str {
-        &self.session_name
-    }
-
-    pub fn agent_cli(&self) -> &str {
-        &self.agent_cli
-    }
-
-    pub fn host(&self) -> &str {
-        &self.host
-    }
-
-    pub fn project(&self) -> &str {
-        &self.project
-    }
-
-    pub fn cwd(&self) -> &str {
-        &self.cwd
-    }
-
-    pub fn control_channel(&self) -> &str {
-        &self.control_channel
-    }
-
-    pub fn operator(&self) -> &str {
-        &self.operator
-    }
-
-    pub fn status(&self) -> SessionStatus {
-        if self.available {
-            self.status
-        } else {
-            SessionStatus::Unavailable
-        }
-    }
-
-    pub fn placement(&self) -> Option<PanePlacement> {
-        self.placement
-    }
-
-    pub fn thread_ts(&self) -> Option<&str> {
-        self.thread_ts.as_deref()
-    }
-
-    pub fn thread_permalink(&self) -> Option<&str> {
-        self.thread_permalink.as_deref()
-    }
-
-    pub fn pane_id(&self) -> Option<&str> {
-        self.pane_id.as_deref()
-    }
-
-    pub fn tmux_session(&self) -> Option<&str> {
-        self.tmux_session.as_deref()
-    }
-
-    pub fn tmux_window(&self) -> Option<&str> {
-        self.tmux_window.as_deref()
-    }
-
-    pub fn notify_socket(&self) -> Option<&str> {
-        self.notify_socket.as_deref()
-    }
-
-    pub fn notify_token(&self) -> Option<&str> {
-        self.notify_token.as_deref()
-    }
-
-    pub fn status_file(&self) -> Option<&str> {
-        self.status_file.as_deref()
-    }
-
-    pub fn last_slack_prompt(&self) -> Option<&str> {
-        self.last_slack_prompt.as_deref()
-    }
-
-    pub fn is_available(&self) -> bool {
-        self.available
-    }
-
-    pub fn is_busy(&self) -> bool {
-        self.available && self.status == SessionStatus::Busy
-    }
-
-    pub fn is_reported_unavailable(&self) -> bool {
-        self.status == SessionStatus::Unavailable
-    }
-
-    pub fn is_self_test(&self) -> bool {
-        self.self_test
-    }
 }
 
 impl PanePlacement {
@@ -623,34 +497,6 @@ mod tests {
     use super::{AgentSession, PanePlacement, SessionStatus};
 
     #[test]
-    fn launch_constructor_exposes_agent_session_facts() {
-        let session = AgentSession::for_launch(
-            "codex-cli-bridge",
-            "codex",
-            "linux",
-            "cli-bridge",
-            "/work/cli-bridge",
-            "C_CONTROL",
-            "U_OPERATOR",
-            PanePlacement::ReuseCurrentPane,
-        );
-
-        assert_eq!("codex-cli-bridge", session.name());
-        assert_eq!("codex", session.agent_cli());
-        assert_eq!("linux", session.host());
-        assert_eq!("cli-bridge", session.project());
-        assert_eq!("/work/cli-bridge", session.cwd());
-        assert_eq!("C_CONTROL", session.control_channel());
-        assert_eq!("U_OPERATOR", session.operator());
-        assert_eq!(SessionStatus::Starting, session.status());
-        assert_eq!(Some(PanePlacement::ReuseCurrentPane), session.placement());
-        assert_eq!(None, session.thread_ts());
-        assert!(session.is_available());
-        assert!(!session.is_busy());
-        assert!(!session.is_self_test());
-    }
-
-    #[test]
     fn registry_constructor_recovers_agent_session_facts() {
         let session = AgentSession::from_registry_record(
             "pane_id=%7\ttmux_session=bridge\ttmux_window=bridge:3\tpane_dead=0\tsession_name=codex-project\tagent_cli=codex\thost=linux\tproject=project\tcwd=/work/project\tstatus=busy\tthread_ts=100.1\tcontrol_channel=C1\toperator=U1\tnotify_socket=/tmp/bridge.sock\tnotify_token=secret\tself_test=1\tstatus_file=/tmp/status\tlast_slack_prompt=abc123\tplacement=detached_window",
@@ -658,26 +504,25 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert_eq!("codex-project", session.name());
-        assert_eq!("codex", session.agent_cli());
-        assert_eq!("linux", session.host());
-        assert_eq!("project", session.project());
-        assert_eq!("/work/project", session.cwd());
-        assert_eq!(Some("%7"), session.pane_id());
-        assert_eq!(Some("bridge"), session.tmux_session());
-        assert_eq!(Some("bridge:3"), session.tmux_window());
-        assert_eq!(Some("100.1"), session.thread_ts());
-        assert_eq!("C1", session.control_channel());
-        assert_eq!("U1", session.operator());
-        assert_eq!(Some("/tmp/bridge.sock"), session.notify_socket());
-        assert_eq!(Some("secret"), session.notify_token());
-        assert_eq!(Some("/tmp/status"), session.status_file());
-        assert_eq!(Some("abc123"), session.last_slack_prompt());
-        assert_eq!(SessionStatus::Busy, session.status());
-        assert_eq!(Some(PanePlacement::DetachedWindow), session.placement());
-        assert!(session.is_available());
-        assert!(session.is_busy());
-        assert!(session.is_self_test());
+        assert_eq!("codex-project", session.session_name);
+        assert_eq!("codex", session.agent_cli);
+        assert_eq!("linux", session.host);
+        assert_eq!("project", session.project);
+        assert_eq!("/work/project", session.cwd);
+        assert_eq!(Some("%7"), session.pane_id.as_deref());
+        assert_eq!(Some("bridge"), session.tmux_session.as_deref());
+        assert_eq!(Some("bridge:3"), session.tmux_window.as_deref());
+        assert_eq!(Some("100.1"), session.thread_ts.as_deref());
+        assert_eq!("C1", session.control_channel);
+        assert_eq!("U1", session.operator);
+        assert_eq!(Some("/tmp/bridge.sock"), session.notify_socket.as_deref());
+        assert_eq!(Some("secret"), session.notify_token.as_deref());
+        assert_eq!(Some("/tmp/status"), session.status_file.as_deref());
+        assert_eq!(Some("abc123"), session.last_slack_prompt.as_deref());
+        assert_eq!(SessionStatus::Busy, session.status);
+        assert_eq!(Some(PanePlacement::DetachedWindow), session.placement);
+        assert!(session.available);
+        assert!(session.self_test);
     }
 
     #[test]
@@ -688,13 +533,13 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        assert_eq!("codex-project", session.name());
-        assert_eq!("codex", session.agent_cli());
-        assert_eq!(None, session.notify_token());
-        assert_eq!(None, session.placement());
-        assert_eq!(SessionStatus::Unavailable, session.status());
-        assert!(!session.is_available());
-        assert!(!session.is_reported_unavailable());
+        assert_eq!("codex-project", session.session_name);
+        assert_eq!("codex", session.agent_cli);
+        assert_eq!(None, session.notify_token);
+        assert_eq!(None, session.placement);
+        assert_eq!(SessionStatus::Idle, session.status);
+        assert!(!session.available);
+        assert_ne!(SessionStatus::Unavailable, session.status);
     }
 
     #[test]
@@ -726,13 +571,13 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!("codex", legacy.agent_cli());
-        assert_eq!(None, legacy.thread_ts());
+        assert_eq!("codex", legacy.agent_cli);
+        assert_eq!(None, legacy.thread_ts);
     }
 
     #[test]
     fn registry_write_publishes_session_name_last() {
-        let session = AgentSession::for_launch(
+        let mut session = AgentSession::for_launch(
             "codex-project",
             "codex",
             "linux",
@@ -741,9 +586,10 @@ mod tests {
             "C1",
             "U1",
             PanePlacement::DetachedWindow,
-        )
-        .with_thread("100.1", None)
-        .with_spawned("%7", None, Some("bridge:3".to_owned()), None, None);
+        );
+        session.thread_ts = Some("100.1".to_owned());
+        session.pane_id = Some("%7".to_owned());
+        session.tmux_window = Some("bridge:3".to_owned());
 
         let keys: Vec<_> = session
             .registry_metadata()

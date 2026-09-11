@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
 mod bridge;
+mod host;
 mod session;
 
 pub use bridge::{Bridge, RoutedThreadAction, StartedSession};
+pub use host::{RealServices, attach_or_switch_agent_tui, run_daemon_process, run_notify_process};
 pub use session::{AgentSession, HostSettings, PanePlacement, ProjectSetting, SessionStatus};
 
 pub const SELF_TEST_PROMPT: &str = "Respond with exactly roundtrip-ok";
@@ -174,7 +176,7 @@ fn launch_agent(
         }
     };
 
-    let bridge = Bridge::new(session.control_channel(), session.operator());
+    let bridge = Bridge::new(&session.control_channel, &session.operator);
     let started = match bridge.start_agent_session(session, services) {
         Ok(started) => started,
         Err(error) => {
@@ -204,16 +206,21 @@ fn launch_agent(
 }
 
 pub fn render_session_status_card(session: &AgentSession) -> String {
+    let status = if session.available {
+        session.status
+    } else {
+        SessionStatus::Unavailable
+    };
     format!(
         "CLI Bridge Session\nAgent: {}\nSession: {}\nStatus: {}\nHost: {}\nProject: {}\ncwd: {}\nPane: {}\nThread: {}",
-        session.agent_cli(),
-        session.name(),
-        session.status().as_str(),
-        session.host(),
-        session.project(),
-        session.cwd(),
-        session.pane_id().unwrap_or("pending"),
-        session.thread_ts().unwrap_or("pending"),
+        session.agent_cli,
+        session.session_name,
+        status.as_str(),
+        session.host,
+        session.project,
+        session.cwd,
+        session.pane_id.as_deref().unwrap_or("pending"),
+        session.thread_ts.as_deref().unwrap_or("pending"),
     )
 }
 
@@ -279,10 +286,10 @@ pub fn apply_host_routing_policy(
         return ThreadAction::Reject("Not executed: stale Slack input.".to_owned());
     }
     match action {
-        ThreadAction::Prompt(_) if session.is_busy() => {
+        ThreadAction::Prompt(_) if session.available && session.status == SessionStatus::Busy => {
             ThreadAction::Reject("Not executed: session is busy.".to_owned())
         }
-        ThreadAction::Prompt(_) | ThreadAction::Stop if !session.is_available() => {
+        ThreadAction::Prompt(_) | ThreadAction::Stop if !session.available => {
             ThreadAction::MarkUnavailable
         }
         action => action,
@@ -421,7 +428,7 @@ fn show_unbridged_agent(
     session: AgentSession,
     warning: String,
 ) -> CliResult {
-    let agent_cli = session.agent_cli().to_owned();
+    let agent_cli = session.agent_cli.clone();
     let session = match services.spawn_agent(session) {
         Ok(session) => session,
         Err(error) => {
@@ -434,29 +441,23 @@ fn show_unbridged_agent(
 
     CliResult {
         exit_code: 0,
-        stdout: format!(
-            "launching {} CLI\n",
-            agent_display_name(session.agent_cli())
-        ),
+        stdout: format!("launching {} CLI\n", agent_display_name(&session.agent_cli)),
         stderr: format!(
             "{warning}launching unbridged {} CLI; no Slack Thread was created\n",
-            agent_display_name(session.agent_cli())
+            agent_display_name(&session.agent_cli)
         ),
         attachment: Some(session),
     }
 }
 
 fn thread_identity(session: &AgentSession) -> String {
-    session
-        .thread_permalink()
-        .map(str::to_owned)
-        .unwrap_or_else(|| {
-            format!(
-                "{} {}",
-                session.control_channel(),
-                session.thread_ts().unwrap_or("pending")
-            )
-        })
+    session.thread_permalink.clone().unwrap_or_else(|| {
+        format!(
+            "{} {}",
+            session.control_channel,
+            session.thread_ts.as_deref().unwrap_or("pending")
+        )
+    })
 }
 
 fn launch_unbridged_agent(
@@ -527,14 +528,19 @@ fn manage_or_defer(
 fn session_list(sessions: &[AgentSession]) -> String {
     let mut output = String::new();
     for session in sessions {
+        let status = if session.available {
+            session.status
+        } else {
+            SessionStatus::Unavailable
+        };
         output.push_str(&format!(
             "{} {} project={} status={} pane={} thread={}\n",
-            session.name(),
-            session.agent_cli(),
-            session.project(),
-            session.status().as_str(),
-            session.pane_id().unwrap_or("pending"),
-            session.thread_ts().unwrap_or("none")
+            session.session_name,
+            session.agent_cli,
+            session.project,
+            status.as_str(),
+            session.pane_id.as_deref().unwrap_or("pending"),
+            session.thread_ts.as_deref().unwrap_or("none")
         ));
     }
     output
@@ -663,21 +669,23 @@ cwd = "/work/cli-bridge"
             self.created_session = Some(session.clone());
             match &self.slack_error {
                 Some(error) => Err(error.clone()),
-                None => Ok(session.with_thread(
-                    "1757221923.123456",
-                    if self.without_permalink {
+                None => {
+                    let mut session = session;
+                    session.thread_ts = Some("1757221923.123456".to_owned());
+                    session.thread_permalink = if self.without_permalink {
                         None
                     } else {
                         Some("https://workspace.slack.com/archives/C/thread".to_owned())
-                    },
-                )),
+                    };
+                    Ok(session)
+                }
             }
         }
 
         fn update_session_thread(&mut self, session: &AgentSession) -> Result<(), String> {
             self.calls.push("update_session_thread");
-            assert_eq!("C_TEST_CONTROL", session.control_channel());
-            assert_eq!(Some("1757221923.123456"), session.thread_ts());
+            assert_eq!("C_TEST_CONTROL", session.control_channel);
+            assert_eq!(Some("1757221923.123456"), session.thread_ts.as_deref());
             self.updated_card = Some(render_session_status_card(session));
             match &self.update_error {
                 Some(error) => Err(error.clone()),
@@ -689,17 +697,16 @@ cwd = "/work/cli-bridge"
             self.calls.push("spawn_agent");
             self.spawned_session = Some(session.clone());
             let tmux_session = matches!(
-                session.placement(),
+                session.placement,
                 Some(PanePlacement::DetachedSession { .. })
             )
-            .then(|| session.name().to_owned());
-            Ok(session.with_spawned(
-                "%7",
-                tmux_session,
-                None,
-                Some("/tmp/cli-bridge-test.sock".to_owned()),
-                Some("notify-token".to_owned()),
-            ))
+            .then(|| session.session_name.clone());
+            let mut session = session;
+            session.pane_id = Some("%7".to_owned());
+            session.tmux_session = tmux_session;
+            session.notify_socket = Some("/tmp/cli-bridge-test.sock".to_owned());
+            session.notify_token = Some("notify-token".to_owned());
+            Ok(session)
         }
 
         fn register_session(&mut self, session: &AgentSession) -> Result<(), String> {
@@ -747,15 +754,11 @@ cwd = "/work/cli-bridge"
             "C_TEST_CONTROL",
             "U_TEST_OPERATOR",
             PanePlacement::DetachedWindow,
-        )
-        .with_thread(thread_ts, None)
-        .with_spawned(
-            pane_id,
-            Some("bridge".to_owned()),
-            Some(format!("bridge:{session_name}")),
-            None,
-            None,
         );
+        session.thread_ts = Some(thread_ts.to_owned());
+        session.pane_id = Some(pane_id.to_owned());
+        session.tmux_session = Some("bridge".to_owned());
+        session.tmux_window = Some(format!("bridge:{session_name}"));
         session.set_status(SessionStatus::Idle);
         session
     }
@@ -780,46 +783,31 @@ cwd = "/work/cli-bridge"
 
         let routed = bridge.route_thread_message(&message, &sessions).unwrap();
 
-        assert_eq!(Some("%2"), routed.session.pane_id());
+        assert_eq!(Some("%2"), routed.session.pane_id.as_deref());
         assert_eq!(ThreadAction::Prompt("continue".to_owned()), routed.action);
     }
 
     #[test]
     fn host_bridge_routes_each_notification_token_to_its_own_agent_session() {
         let bridge = Bridge::new("C_TEST_CONTROL", "U_TEST_OPERATOR");
-        let first = listed_session("first", "%1", "100.1").with_spawned(
-            "%1",
-            Some("bridge".to_owned()),
-            Some("bridge:first".to_owned()),
-            None,
-            Some("first-token".to_owned()),
-        );
-        let second = listed_session("second", "%2", "100.2").with_spawned(
-            "%2",
-            Some("bridge".to_owned()),
-            Some("bridge:second".to_owned()),
-            None,
-            Some("second-token".to_owned()),
-        );
+        let mut first = listed_session("first", "%1", "100.1");
+        first.notify_token = Some("first-token".to_owned());
+        let mut second = listed_session("second", "%2", "100.2");
+        second.notify_token = Some("second-token".to_owned());
 
         let sessions = [first, second];
         let session = bridge
             .route_notification("second-token", &sessions)
             .unwrap();
 
-        assert_eq!(Some("%2"), session.pane_id());
+        assert_eq!(Some("%2"), session.pane_id.as_deref());
     }
 
     #[test]
     fn self_test_bot_message_routes_through_its_session_thread() {
         let bridge = Bridge::new("C_TEST_CONTROL", "U_TEST_OPERATOR");
-        let mut session = listed_session("self-test", "%1", "100.1").with_spawned(
-            "%1",
-            Some("bridge".to_owned()),
-            Some("bridge:self-test".to_owned()),
-            None,
-            Some("self-test-token".to_owned()),
-        );
+        let mut session = listed_session("self-test", "%1", "100.1");
+        session.notify_token = Some("self-test-token".to_owned());
         session.enable_self_test("/tmp/self-test.status".to_owned());
         let text = self_test_message("self-test-token");
         let message = ThreadMessage {
@@ -872,8 +860,11 @@ cwd = "/work/cli-bridge"
 
         assert_eq!(0, result.exit_code);
         let registration = services.registered_session.unwrap();
-        assert!(registration.is_self_test());
-        assert_eq!(Some("/tmp/cli-bridge.status"), registration.status_file());
+        assert!(registration.self_test);
+        assert_eq!(
+            Some("/tmp/cli-bridge.status"),
+            registration.status_file.as_deref()
+        );
     }
 
     #[test]
@@ -891,14 +882,17 @@ cwd = "/work/cli-bridge"
             assert_eq!(0, result.exit_code);
             assert_eq!(
                 Some(PanePlacement::ReuseCurrentPane),
-                result.attachment.as_ref().and_then(AgentSession::placement)
+                result
+                    .attachment
+                    .as_ref()
+                    .and_then(|session| session.placement)
             );
             assert_eq!(
                 Some(PanePlacement::ReuseCurrentPane),
                 services
                     .spawned_session
                     .as_ref()
-                    .and_then(AgentSession::placement)
+                    .and_then(|session| session.placement)
             );
         }
     }
@@ -921,14 +915,17 @@ cwd = "/work/cli-bridge"
         assert_eq!(0, result.exit_code);
         assert_eq!(
             Some(PanePlacement::DetachedSession { attach: true }),
-            result.attachment.as_ref().and_then(AgentSession::placement)
+            result
+                .attachment
+                .as_ref()
+                .and_then(|session| session.placement)
         );
         assert_eq!(
             Some(PanePlacement::DetachedSession { attach: true }),
             services
                 .spawned_session
                 .as_ref()
-                .and_then(AgentSession::placement)
+                .and_then(|session| session.placement)
         );
     }
 
@@ -940,8 +937,8 @@ cwd = "/work/cli-bridge"
 
         assert_eq!(0, result.exit_code);
         let session = result.attachment.unwrap();
-        assert_eq!(Some(PanePlacement::ReuseCurrentPane), session.placement());
-        assert_eq!(None, session.thread_ts());
+        assert_eq!(Some(PanePlacement::ReuseCurrentPane), session.placement);
+        assert_eq!(None, session.thread_ts);
     }
 
     #[test]
@@ -968,7 +965,10 @@ cwd = "/work/cli-bridge"
         assert_eq!(0, result.exit_code);
         assert_eq!(
             Some(PanePlacement::DetachedSession { attach: true }),
-            result.attachment.as_ref().and_then(AgentSession::placement)
+            result
+                .attachment
+                .as_ref()
+                .and_then(|session| session.placement)
         );
         assert_eq!(
             vec![
@@ -981,19 +981,24 @@ cwd = "/work/cli-bridge"
         );
         assert_eq!(
             "codex-cli-bridge",
-            services.created_session.as_ref().unwrap().name()
+            services.created_session.as_ref().unwrap().session_name
         );
         assert_eq!(
             "codex-cli-bridge",
-            services.spawned_session.as_ref().unwrap().name()
+            services.spawned_session.as_ref().unwrap().session_name
         );
         assert_eq!(
             "/work/cli-bridge",
-            services.spawned_session.as_ref().unwrap().cwd()
+            services.spawned_session.as_ref().unwrap().cwd
         );
         assert_eq!(
             Some("1757221923.123456"),
-            services.spawned_session.as_ref().unwrap().thread_ts()
+            services
+                .spawned_session
+                .as_ref()
+                .unwrap()
+                .thread_ts
+                .as_deref()
         );
         assert!(
             result
@@ -1010,19 +1015,19 @@ cwd = "/work/cli-bridge"
         assert!(card.contains("Pane: %7"));
         assert!(card.contains("Thread: 1757221923.123456"));
         let registration = services.registered_session.unwrap();
-        assert_eq!("C_TEST_CONTROL", registration.control_channel());
-        assert_eq!("U_TEST_OPERATOR", registration.operator());
-        assert_eq!(Some("1757221923.123456"), registration.thread_ts());
-        assert_eq!("codex-cli-bridge", registration.name());
-        assert_eq!("linux", registration.host());
-        assert_eq!("cli-bridge", registration.project());
-        assert_eq!("/work/cli-bridge", registration.cwd());
-        assert_eq!(Some("%7"), registration.pane_id());
+        assert_eq!("C_TEST_CONTROL", registration.control_channel);
+        assert_eq!("U_TEST_OPERATOR", registration.operator);
+        assert_eq!(Some("1757221923.123456"), registration.thread_ts.as_deref());
+        assert_eq!("codex-cli-bridge", registration.session_name);
+        assert_eq!("linux", registration.host);
+        assert_eq!("cli-bridge", registration.project);
+        assert_eq!("/work/cli-bridge", registration.cwd);
+        assert_eq!(Some("%7"), registration.pane_id.as_deref());
         assert_eq!(
             Some("/tmp/cli-bridge-test.sock"),
-            registration.notify_socket()
+            registration.notify_socket.as_deref()
         );
-        assert_eq!(Some("notify-token"), registration.notify_token());
+        assert_eq!(Some("notify-token"), registration.notify_token.as_deref());
     }
 
     #[test]
@@ -1045,17 +1050,14 @@ cwd = "/work/cli-bridge"
             ],
             services.calls
         );
-        assert_eq!(
-            "grok",
-            services.created_session.as_ref().unwrap().agent_cli()
-        );
+        assert_eq!("grok", services.created_session.as_ref().unwrap().agent_cli);
         assert_eq!(
             "grok-cli-bridge",
-            services.spawned_session.as_ref().unwrap().name()
+            services.spawned_session.as_ref().unwrap().session_name
         );
         assert_eq!(
             "grok",
-            services.registered_session.as_ref().unwrap().agent_cli()
+            services.registered_session.as_ref().unwrap().agent_cli
         );
         assert!(result.stdout.contains("launching Grok CLI"));
     }
@@ -1077,7 +1079,7 @@ cwd = "/work/cli-bridge"
         assert_eq!(0, result.exit_code);
         assert_eq!(
             "codex-cli-bridge-2",
-            services.created_session.unwrap().name()
+            services.created_session.unwrap().session_name
         );
     }
 
@@ -1095,7 +1097,7 @@ cwd = "/work/cli-bridge"
             PanePlacement::DetachedWindow,
             PanePlacement::DetachedSession { attach: false },
         ] {
-            let session = AgentSession::for_launch(
+            let mut session = AgentSession::for_launch(
                 "codex-cli-bridge",
                 "codex",
                 "linux",
@@ -1104,8 +1106,8 @@ cwd = "/work/cli-bridge"
                 "C_TEST_CONTROL",
                 "U_TEST_OPERATOR",
                 placement,
-            )
-            .with_thread("1757221923.123456", None);
+            );
+            session.thread_ts = Some("1757221923.123456".to_owned());
             let mut services = FakeServices::default();
             let started = bridge.start_agent_session(session, &mut services).unwrap();
 
@@ -1113,14 +1115,11 @@ cwd = "/work/cli-bridge"
                 vec!["spawn_agent", "update_session_thread", "register_session"],
                 services.calls
             );
-            assert_eq!(
-                Some(placement),
-                services.spawned_session.unwrap().placement()
-            );
-            assert_eq!(Some(placement), started.session.placement());
+            assert_eq!(Some(placement), services.spawned_session.unwrap().placement);
+            assert_eq!(Some(placement), started.session.placement);
             assert_ne!(
                 Some(PanePlacement::ReuseCurrentPane),
-                started.session.placement()
+                started.session.placement
             );
         }
     }
@@ -1174,9 +1173,9 @@ cwd = "/work/cli-bridge"
         );
 
         let starting = render_session_status_card(&launch);
-        let mut session = launch
-            .with_thread("1757221923.123456", None)
-            .with_spawned("%7", None, None, None, None);
+        let mut session = launch;
+        session.thread_ts = Some("1757221923.123456".to_owned());
+        session.pane_id = Some("%7".to_owned());
         session.set_status(SessionStatus::Idle);
         let idle = render_session_status_card(&session);
         session.set_status(SessionStatus::Busy);
@@ -1605,7 +1604,7 @@ cwd = "/work/cli-bridge"
 
         assert_eq!(0, result.exit_code);
         assert_eq!(vec!["create_session_thread", "spawn_agent"], services.calls);
-        assert_eq!(None, services.spawned_session.unwrap().thread_ts());
+        assert_eq!(None, services.spawned_session.unwrap().thread_ts);
         assert!(
             result
                 .stderr
@@ -1626,7 +1625,7 @@ cwd = "/work/cli-bridge"
 
         assert_eq!(0, result.exit_code);
         assert_eq!(vec!["spawn_agent"], services.calls);
-        assert_eq!(None, services.spawned_session.unwrap().thread_ts());
+        assert_eq!(None, services.spawned_session.unwrap().thread_ts);
         assert!(
             result
                 .stderr
@@ -1715,7 +1714,7 @@ cwd = "/work/cli-bridge"
 
         assert_eq!(0, result.exit_code);
         assert_eq!(vec!["spawn_agent"], services.calls);
-        assert_eq!(None, services.spawned_session.unwrap().thread_ts());
+        assert_eq!(None, services.spawned_session.unwrap().thread_ts);
         assert!(result.stderr.contains("setting.toml is missing or empty"));
         assert!(result.stderr.contains("launching unbridged Codex CLI"));
     }

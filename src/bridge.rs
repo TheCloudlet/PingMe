@@ -57,13 +57,14 @@ impl Bridge {
     ) -> Option<RoutedThreadAction<'session>> {
         let thread_ts = message.thread_ts?;
         let session = sessions.iter().find(|session| {
-            session.thread_ts() == Some(thread_ts)
-                && session.control_channel() == self.control_channel_id
+            session.thread_ts.as_deref() == Some(thread_ts)
+                && session.control_channel == self.control_channel_id
         })?;
-        let action = if session.is_self_test()
+        let action = if session.self_test
             && message.is_bot
             && session
-                .notify_token()
+                .notify_token
+                .as_deref()
                 .is_some_and(|token| message.text == self_test_message(token))
         {
             ThreadAction::Prompt(SELF_TEST_PROMPT.to_owned())
@@ -84,8 +85,8 @@ impl Bridge {
         sessions: &'session [AgentSession],
     ) -> Option<&'session AgentSession> {
         sessions.iter().find(|session| {
-            session.control_channel() == self.control_channel_id
-                && session.notify_token() == Some(token)
+            session.control_channel == self.control_channel_id
+                && session.notify_token.as_deref() == Some(token)
         })
     }
 }
