@@ -153,12 +153,16 @@ replies=$(curl -sS \
 busy_rejections=$(printf '%s' "$replies" | jq \
     '[.messages[] | select(.text == "Not executed: session is busy.")] | length') \
     || fail 'failed to inspect Busy rejection'
+beeps=$(printf '%s' "$replies" | jq \
+    '[.messages[] | select(.text == "--> (Beep! Cli received your message!)")] | length') \
+    || fail 'failed to inspect prompt receipt Beep'
 expected_response=$(printf '*%s*\nroundtrip-ok' "$agent_name")
 final_responses=$(printf '%s' "$replies" | jq --arg expected "$expected_response" \
     '[.messages[] | select(.text == $expected)] | length') \
     || fail 'failed to inspect final response'
 [ "$busy_rejections" -ge 1 ] || fail 'Busy prompt was not rejected'
+[ "$beeps" -ge 1 ] || fail 'prompt receipt Beep did not return to the Session Thread'
 [ "$final_responses" -ge 1 ] || fail 'final response did not return to the Session Thread'
 
-printf 'live smoke passed: Agent CLI=%s Host=%s Session Thread=%s Busy rejections=%s\n' \
-    "$agent_name" "$host_name" "$thread_ts" "$busy_rejections"
+printf 'live smoke passed: Agent CLI=%s Host=%s Session Thread=%s Busy rejections=%s Beeps=%s\n' \
+    "$agent_name" "$host_name" "$thread_ts" "$busy_rejections" "$beeps"
