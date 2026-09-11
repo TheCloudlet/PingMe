@@ -229,9 +229,12 @@ impl AgentSession {
     pub fn write_to_registry(&self) -> Result<(), String> {
         let pane_id = self.require_pane()?;
         for (key, value) in self.registry_metadata() {
+            if key == "@cli_bridge_session_name" {
+                continue;
+            }
             set_registry_field(pane_id, key, &value)?;
         }
-        Ok(())
+        set_registry_field(pane_id, "@cli_bridge_session_name", self.name())
     }
 
     pub fn name_exists(name: &str) -> Result<bool, String> {
@@ -252,6 +255,7 @@ impl AgentSession {
     }
 
     pub fn write_name(&mut self, name: &str) -> Result<(), String> {
+        // Rename of an already-published Session; first publication goes through write_to_registry.
         set_registry_field(self.require_pane()?, "@cli_bridge_session_name", name)?;
         self.set_name(name);
         Ok(())
@@ -403,8 +407,8 @@ impl AgentSession {
     }
 
     fn registry_metadata(&self) -> Vec<(&'static str, String)> {
+        // Session Name is last so a crash mid-write leaves the pane unpublished.
         vec![
-            ("@cli_bridge_session_name", self.session_name.clone()),
             ("@cli_bridge_agent_cli", self.agent_cli.clone()),
             ("@cli_bridge_host", self.host.clone()),
             ("@cli_bridge_project", self.project.clone()),
@@ -447,6 +451,7 @@ impl AgentSession {
                 "@cli_bridge_status_file",
                 self.status_file.clone().unwrap_or_default(),
             ),
+            ("@cli_bridge_session_name", self.session_name.clone()),
         ]
     }
 
@@ -723,5 +728,34 @@ mod tests {
         .unwrap();
         assert_eq!("codex", legacy.agent_cli());
         assert_eq!(None, legacy.thread_ts());
+    }
+
+    #[test]
+    fn registry_write_publishes_session_name_last() {
+        let session = AgentSession::for_launch(
+            "codex-project",
+            "codex",
+            "linux",
+            "project",
+            "/work/project",
+            "C1",
+            "U1",
+            PanePlacement::DetachedWindow,
+        )
+        .with_thread("100.1", None)
+        .with_spawned("%7", None, Some("bridge:3".to_owned()), None, None);
+
+        let keys: Vec<_> = session
+            .registry_metadata()
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        assert_eq!(Some("@cli_bridge_session_name"), keys.last().copied());
+        assert_eq!(
+            1,
+            keys.iter()
+                .filter(|name| **name == "@cli_bridge_session_name")
+                .count()
+        );
     }
 }

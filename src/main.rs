@@ -1574,6 +1574,7 @@ fn env_values() -> BTreeMap<&'static str, String> {
 }
 
 fn spawn_agent_tui(session: AgentSession) -> Result<AgentSession, String> {
+    // Leave the pane unpublished until write_to_registry; Session Name is the last field.
     if session.agent_cli() == "grok" {
         install_grok_hook()?;
     }
@@ -1602,11 +1603,7 @@ fn spawn_agent_tui(session: AgentSession) -> Result<AgentSession, String> {
             if pane_id.is_empty() {
                 return Err("missing environment variable TMUX_PANE".to_owned());
             }
-            let mut session =
-                session.with_spawned(pane_id, None, None, notify_socket, notify_token);
-            let name = session.name().to_owned();
-            session.write_name(&name)?;
-            Ok(session)
+            Ok(session.with_spawned(pane_id, None, None, notify_socket, notify_token))
         }
         PanePlacement::DetachedWindow => {
             let pane_id = tmux_output(&[
@@ -1624,16 +1621,13 @@ fn spawn_agent_tui(session: AgentSession) -> Result<AgentSession, String> {
             let (pane_id, window_id) = parse_tmux_window(&pane_id)?;
             let pane_id = pane_id.to_owned();
             tmux_status(&["set-option", "-w", "-t", &pane_id, "remain-on-exit", "on"])?;
-            let mut session = session.with_spawned(
+            Ok(session.with_spawned(
                 pane_id,
                 None,
                 Some(window_id.to_owned()),
                 notify_socket,
                 notify_token,
-            );
-            let name = session.name().to_owned();
-            session.write_name(&name)?;
-            Ok(session)
+            ))
         }
         PanePlacement::DetachedSession { .. } => {
             let pane_id = tmux_output(&[
@@ -1653,16 +1647,13 @@ fn spawn_agent_tui(session: AgentSession) -> Result<AgentSession, String> {
             let pane_id = pane_id.trim().to_owned();
             tmux_status(&["set-option", "-w", "-t", &pane_id, "remain-on-exit", "on"])?;
             let tmux_session = session.name().to_owned();
-            let mut session = session.with_spawned(
+            Ok(session.with_spawned(
                 pane_id,
                 Some(tmux_session),
                 None,
                 notify_socket,
                 notify_token,
-            );
-            let name = session.name().to_owned();
-            session.write_name(&name)?;
-            Ok(session)
+            ))
         }
     }
 }
