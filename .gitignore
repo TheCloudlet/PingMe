@@ -1,7 +1,8 @@
 /target/
 /setting.toml
 /.scratch/
-/docs/
+/docs/adr/
+/docs/agents/
 /specs/
 /AGENTS.md
 /.repotour/
