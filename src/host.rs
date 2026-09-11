@@ -232,7 +232,7 @@ fn ensure_host_daemon() -> Result<(), String> {
     let executable =
         env::current_exe().map_err(|error| format!("failed to find current exe: {error}"))?;
     let ready_file = env::temp_dir()
-        .join(format!("cli-bridge-daemon-ready-{}", std::process::id()))
+        .join(format!("pingme-daemon-ready-{}", std::process::id()))
         .display()
         .to_string();
     let _ = fs::remove_file(&ready_file);
@@ -283,7 +283,7 @@ fn host_notify_socket_path() -> Result<String, String> {
         })
         .collect();
     Ok(env::temp_dir()
-        .join(format!("cli-bridge-{safe_user}.sock"))
+        .join(format!("pingme-{safe_user}.sock"))
         .display()
         .to_string())
 }
@@ -304,10 +304,10 @@ pub fn run_notify_process(args: &[String]) -> ExitCode {
 }
 
 fn notify_daemon(args: &[String]) -> Result<(), String> {
-    let socket_path = env::var("CLI_BRIDGE_NOTIFY_SOCKET")
-        .map_err(|_| "missing environment variable CLI_BRIDGE_NOTIFY_SOCKET".to_owned())?;
-    let token = env::var("CLI_BRIDGE_NOTIFY_TOKEN")
-        .map_err(|_| "missing environment variable CLI_BRIDGE_NOTIFY_TOKEN".to_owned())?;
+    let socket_path = env::var("PINGME_NOTIFY_SOCKET")
+        .map_err(|_| "missing environment variable PINGME_NOTIFY_SOCKET".to_owned())?;
+    let token = env::var("PINGME_NOTIFY_TOKEN")
+        .map_err(|_| "missing environment variable PINGME_NOTIFY_TOKEN".to_owned())?;
     let agent_cli = args.get(2).map(String::as_str).unwrap_or("codex");
     let notification = if agent_cli == "grok" {
         let mut input = String::new();
@@ -1521,7 +1521,7 @@ async fn update_slack_root(http: &reqwest::Client, config: &DaemonConfig) -> Res
 }
 
 fn paste_into_pane(pane_id: &str, text: &str) -> Result<(), String> {
-    let buffer = format!("cli-bridge-{}", std::process::id());
+    let buffer = format!("pingme-{}", std::process::id());
     let mut load = Command::new("tmux")
         .args(["load-buffer", "-b", &buffer, "-"])
         .stdin(Stdio::piped())
@@ -1745,7 +1745,7 @@ fn agent_command(
             notify_arg(),
         ) {
             (Some(thread_ts), Some(socket_path), Some(token), Some(notify)) => format!(
-                "exec env CLI_BRIDGE_SESSION_NAME={} CLI_BRIDGE_THREAD_TS={} CLI_BRIDGE_NOTIFY_SOCKET={} CLI_BRIDGE_NOTIFY_TOKEN={} codex -c {}",
+                "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} PINGME_NOTIFY_SOCKET={} PINGME_NOTIFY_TOKEN={} codex -c {}",
                 shell_quote(&session.session_name),
                 shell_quote(thread_ts),
                 shell_quote(socket_path),
@@ -1753,7 +1753,7 @@ fn agent_command(
                 shell_quote(&format!("notify={notify}")),
             ),
             (Some(thread_ts), _, _, _) => format!(
-                "exec env CLI_BRIDGE_SESSION_NAME={} CLI_BRIDGE_THREAD_TS={} codex",
+                "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} codex",
                 shell_quote(&session.session_name),
                 shell_quote(thread_ts),
             ),
@@ -1770,7 +1770,7 @@ fn agent_command(
 }
 
 fn agent_start_channel(token: &str) -> String {
-    format!("cli-bridge-start-{token}")
+    format!("pingme-start-{token}")
 }
 
 fn grok_command(
@@ -1784,7 +1784,7 @@ fn grok_command(
         notify_token,
     ) {
         (Some(thread_ts), Some(socket_path), Some(token)) => format!(
-            "exec env CLI_BRIDGE_SESSION_NAME={} CLI_BRIDGE_THREAD_TS={} CLI_BRIDGE_NOTIFY_SOCKET={} CLI_BRIDGE_NOTIFY_TOKEN={} CLI_BRIDGE_EXECUTABLE={} grok",
+            "exec env PINGME_SESSION_NAME={} PINGME_THREAD_TS={} PINGME_NOTIFY_SOCKET={} PINGME_NOTIFY_TOKEN={} PINGME_EXECUTABLE={} grok",
             shell_quote(&session.session_name),
             shell_quote(thread_ts),
             shell_quote(socket_path),
@@ -1795,7 +1795,7 @@ fn grok_command(
     }
 }
 
-const GROK_HOOK: &str = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"test -n \"${CLI_BRIDGE_NOTIFY_SOCKET:-}\" && test -n \"${CLI_BRIDGE_EXECUTABLE:-}\" && \"${CLI_BRIDGE_EXECUTABLE}\" notify grok || true","timeout":5}]}]}}"#;
+const GROK_HOOK: &str = r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"test -n \"${PINGME_NOTIFY_SOCKET:-}\" && test -n \"${PINGME_EXECUTABLE:-}\" && \"${PINGME_EXECUTABLE}\" notify grok || true","timeout":5}]}]}}"#;
 
 fn install_grok_hook() -> Result<(), String> {
     let home = env::var("HOME")
@@ -1803,7 +1803,7 @@ fn install_grok_hook() -> Result<(), String> {
     let hooks = std::path::Path::new(&home).join(".grok/hooks");
     fs::create_dir_all(&hooks)
         .map_err(|error| format!("failed to create Grok hook directory: {error}"))?;
-    let hook = hooks.join("cli-bridge.json");
+    let hook = hooks.join("pingme.json");
     if hook.exists() {
         let existing = fs::read_to_string(&hook)
             .map_err(|error| format!("failed to read Grok completion hook: {error}"))?;
@@ -1878,7 +1878,7 @@ fn slack_text(text: &str) -> String {
         text.to_owned()
     } else {
         format!(
-            "{}\n[truncated by cli-bridge]",
+            "{}\n[truncated by pingme]",
             text.chars().take(LIMIT).collect::<String>()
         )
     }
@@ -2317,32 +2317,32 @@ mod tests {
     #[test]
     fn bridged_agent_waits_for_session_registration_before_starting() {
         let session = AgentSession::for_launch(
-            "codex-cli-bridge",
+            "codex-pingme",
             "codex",
             "linux",
             "project",
-            "/work/cli-bridge",
+            "/work/pingme",
             "C1",
             "U1",
             PanePlacement::DetachedWindow,
         );
         let mut session = session;
         session.thread_ts = Some("100.1".to_owned());
-        let command = agent_command(&session, Some("/tmp/cli-bridge.sock"), Some("secret"));
+        let command = agent_command(&session, Some("/tmp/pingme.sock"), Some("secret"));
 
-        assert!(command.starts_with("tmux wait-for 'cli-bridge-start-secret'; exec env "));
+        assert!(command.starts_with("tmux wait-for 'pingme-start-secret'; exec env "));
     }
 
     #[test]
     fn current_pane_shell_keeps_wait_for_and_unsets_metadata_on_exit() {
         let command = current_pane_shell_command(
             "%7",
-            "tmux wait-for 'cli-bridge-start-secret'; exec env CLI_BRIDGE_SESSION_NAME='codex-cli-bridge' codex",
+            "tmux wait-for 'pingme-start-secret'; exec env PINGME_SESSION_NAME='codex-pingme' codex",
         );
 
         assert_eq!(
             format!(
-                "trap {} EXIT; tmux wait-for 'cli-bridge-start-secret'; env CLI_BRIDGE_SESSION_NAME='codex-cli-bridge' codex",
+                "trap {} EXIT; tmux wait-for 'pingme-start-secret'; env PINGME_SESSION_NAME='codex-pingme' codex",
                 shell_quote(&AgentSession::clear_registry_name_command("%7"))
             ),
             command
@@ -2352,7 +2352,7 @@ mod tests {
     #[test]
     fn host_daemon_lock_rejects_a_second_owner() {
         let socket_path = env::temp_dir()
-            .join(format!("cli-bridge-lock-test-{}", std::process::id()))
+            .join(format!("pingme-lock-test-{}", std::process::id()))
             .display()
             .to_string();
         let first = try_lock_host_daemon(&socket_path).unwrap();
@@ -2382,10 +2382,8 @@ mod tests {
 
     #[test]
     fn self_test_writes_status_only_for_roundtrip_ok() {
-        let status_file = env::temp_dir().join(format!(
-            "cli-bridge-self-test-status-{}",
-            std::process::id()
-        ));
+        let status_file =
+            env::temp_dir().join(format!("pingme-self-test-status-{}", std::process::id()));
         let _ = fs::remove_file(&status_file);
 
         assert!(!write_self_test_status(true, Some(&status_file), "not-ok").unwrap());
@@ -2486,11 +2484,11 @@ mod tests {
 
     #[test]
     fn uses_grok_user_hook_location() {
-        let path = std::path::Path::new("/home/test").join(".grok/hooks/cli-bridge.json");
+        let path = std::path::Path::new("/home/test").join(".grok/hooks/pingme.json");
         assert_eq!(
-            "/home/test/.grok/hooks/cli-bridge.json",
+            "/home/test/.grok/hooks/pingme.json",
             path.display().to_string()
         );
-        assert!(GROK_HOOK.contains("CLI_BRIDGE_NOTIFY_SOCKET"));
+        assert!(GROK_HOOK.contains("PINGME_NOTIFY_SOCKET"));
     }
 }

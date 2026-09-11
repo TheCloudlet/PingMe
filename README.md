@@ -1,4 +1,4 @@
-# CLI Bridge
+# PingMe
 
 Talk to **Grok Build** (`grok`) or **Codex CLI** (`codex`) on your computer from a Slack thread.
 
@@ -31,11 +31,11 @@ Follow **[docs/setup.md](docs/setup.md)** to create the workspace (if needed), t
 From a folder listed in `setting.toml`:
 
 ```sh
-cli-bridge grok
-cli-bridge codex
-cli-bridge list
-cli-bridge attach <session-name>
-cli-bridge cleanup
+pingme grok
+pingme codex
+pingme list
+pingme attach <session-name>
+pingme cleanup
 ```
 
 In Slack, in the private channel:
@@ -45,7 +45,7 @@ In Slack, in the private channel:
 /cli-new codex my-project
 ```
 
-In that session’s thread, type normally. The bot replies `--> (Beep! Cli received your message!)` when the prompt has been pasted into the Agent CLI. Then wait for the answer.
+In that session’s thread, type normally. The bot replies `--> (Beep! PingMe received your message!)` when the prompt has been pasted into the Agent CLI. Then wait for the answer.
 
 Thread controls (type these as the whole message):
 

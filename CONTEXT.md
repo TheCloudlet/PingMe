@@ -1,6 +1,6 @@
-# CLI Bridge
+# PingMe
 
-CLI Bridge lets a trusted person interact with command-line agents on a remote
+PingMe lets a trusted person interact with command-line agents on a remote
 machine through a messaging service.
 
 ## Language
@@ -62,7 +62,7 @@ response, pending approval, error, or status change.
 _Avoid_: Transcript, event, stream
 
 **Slack Bridge Command**:
-A Slack slash command owned by CLI Bridge. Slack Bridge Commands start with
+A Slack slash command owned by PingMe. Slack Bridge Commands start with
 `/cli-` and control the bridge rather than sending a prompt to an Agent CLI.
 _Avoid_: Prompt, Agent CLI command, provider slash command
 

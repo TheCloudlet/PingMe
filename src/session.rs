@@ -8,22 +8,22 @@ const TMUX_REGISTRY_FORMAT: &str = concat!(
     "tmux_session=#{session_name}\t",
     "tmux_window=#{session_name}:#{window_index}\t",
     "pane_dead=#{pane_dead}\t",
-    "session_name=#{@cli_bridge_session_name}\t",
-    "agent_cli=#{@cli_bridge_agent_cli}\t",
-    "host=#{@cli_bridge_host}\t",
-    "project=#{@cli_bridge_project}\t",
-    "cwd=#{@cli_bridge_cwd}\t",
-    "status=#{@cli_bridge_status}\t",
-    "thread_ts=#{@cli_bridge_thread_ts}\t",
-    "thread_permalink=#{@cli_bridge_thread_permalink}\t",
-    "control_channel=#{@cli_bridge_channel}\t",
-    "operator=#{@cli_bridge_operator}\t",
-    "notify_socket=#{@cli_bridge_notify_socket}\t",
-    "notify_token=#{@cli_bridge_notify_token}\t",
-    "self_test=#{@cli_bridge_self_test}\t",
-    "status_file=#{@cli_bridge_status_file}\t",
-    "last_slack_prompt=#{@cli_bridge_last_slack_prompt_fingerprint}\t",
-    "placement=#{@cli_bridge_placement}",
+    "session_name=#{@pingme_session_name}\t",
+    "agent_cli=#{@pingme_agent_cli}\t",
+    "host=#{@pingme_host}\t",
+    "project=#{@pingme_project}\t",
+    "cwd=#{@pingme_cwd}\t",
+    "status=#{@pingme_status}\t",
+    "thread_ts=#{@pingme_thread_ts}\t",
+    "thread_permalink=#{@pingme_thread_permalink}\t",
+    "control_channel=#{@pingme_channel}\t",
+    "operator=#{@pingme_operator}\t",
+    "notify_socket=#{@pingme_notify_socket}\t",
+    "notify_token=#{@pingme_notify_token}\t",
+    "self_test=#{@pingme_self_test}\t",
+    "status_file=#{@pingme_status_file}\t",
+    "last_slack_prompt=#{@pingme_last_slack_prompt_fingerprint}\t",
+    "placement=#{@pingme_placement}",
 );
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,19 +231,19 @@ impl AgentSession {
     pub fn write_to_registry(&self) -> Result<(), String> {
         let pane_id = self.registry_pane()?;
         for (key, value) in self.registry_metadata() {
-            if key == "@cli_bridge_session_name" {
+            if key == "@pingme_session_name" {
                 continue;
             }
             set_registry_field(pane_id, key, &value)?;
         }
-        set_registry_field(pane_id, "@cli_bridge_session_name", &self.session_name)
+        set_registry_field(pane_id, "@pingme_session_name", &self.session_name)
     }
 
     pub fn name_exists(name: &str) -> Result<bool, String> {
         let output = Command::new("tmux")
-            .args(["list-panes", "-a", "-F", "#{@cli_bridge_session_name}"])
+            .args(["list-panes", "-a", "-F", "#{@pingme_session_name}"])
             .output()
-            .map_err(|error| format!("failed to list cli-bridge tmux sessions: {error}"))?;
+            .map_err(|error| format!("failed to list pingme tmux sessions: {error}"))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("no server running") {
@@ -258,13 +258,13 @@ impl AgentSession {
 
     pub fn write_name(&mut self, name: &str) -> Result<(), String> {
         // Rename of an already-published Session; first publication goes through write_to_registry.
-        set_registry_field(self.registry_pane()?, "@cli_bridge_session_name", name)?;
+        set_registry_field(self.registry_pane()?, "@pingme_session_name", name)?;
         self.set_name(name);
         Ok(())
     }
 
     pub fn write_status(&mut self, status: SessionStatus) -> Result<(), String> {
-        set_registry_field(self.registry_pane()?, "@cli_bridge_status", status.as_str())?;
+        set_registry_field(self.registry_pane()?, "@pingme_status", status.as_str())?;
         self.set_status(status);
         Ok(())
     }
@@ -272,7 +272,7 @@ impl AgentSession {
     pub fn write_self_test(&mut self, enabled: bool) -> Result<(), String> {
         set_registry_field(
             self.registry_pane()?,
-            "@cli_bridge_self_test",
+            "@pingme_self_test",
             if enabled { "1" } else { "0" },
         )?;
         self.set_self_test(enabled);
@@ -282,7 +282,7 @@ impl AgentSession {
     pub fn write_last_slack_prompt(&mut self, fingerprint: Option<String>) -> Result<(), String> {
         set_registry_field(
             self.registry_pane()?,
-            "@cli_bridge_last_slack_prompt_fingerprint",
+            "@pingme_last_slack_prompt_fingerprint",
             fingerprint.as_deref().unwrap_or(""),
         )?;
         self.set_last_slack_prompt(fingerprint);
@@ -297,7 +297,7 @@ impl AgentSession {
                 "-u",
                 "-t",
                 pane_id,
-                "@cli_bridge_session_name",
+                "@pingme_session_name",
             ])
             .output()
             .map_err(|error| format!("failed to run tmux: {error}"))?;
@@ -309,7 +309,7 @@ impl AgentSession {
     }
 
     pub fn clear_registry_name_command(pane_id: &str) -> String {
-        format!("tmux set-option -p -u -t {pane_id} @cli_bridge_session_name")
+        format!("tmux set-option -p -u -t {pane_id} @pingme_session_name")
     }
 
     fn registry_pane(&self) -> Result<&str, String> {
@@ -375,49 +375,49 @@ impl AgentSession {
     fn registry_metadata(&self) -> Vec<(&'static str, String)> {
         // Session Name is last so a crash mid-write leaves the pane unpublished.
         vec![
-            ("@cli_bridge_agent_cli", self.agent_cli.clone()),
-            ("@cli_bridge_host", self.host.clone()),
-            ("@cli_bridge_project", self.project.clone()),
-            ("@cli_bridge_cwd", self.cwd.clone()),
-            ("@cli_bridge_status", self.status.as_str().to_owned()),
+            ("@pingme_agent_cli", self.agent_cli.clone()),
+            ("@pingme_host", self.host.clone()),
+            ("@pingme_project", self.project.clone()),
+            ("@pingme_cwd", self.cwd.clone()),
+            ("@pingme_status", self.status.as_str().to_owned()),
             (
-                "@cli_bridge_thread_ts",
+                "@pingme_thread_ts",
                 self.thread_ts.clone().unwrap_or_default(),
             ),
             (
-                "@cli_bridge_thread_permalink",
+                "@pingme_thread_permalink",
                 self.thread_permalink.clone().unwrap_or_default(),
             ),
-            ("@cli_bridge_channel", self.control_channel.clone()),
-            ("@cli_bridge_operator", self.operator.clone()),
+            ("@pingme_channel", self.control_channel.clone()),
+            ("@pingme_operator", self.operator.clone()),
             (
-                "@cli_bridge_self_test",
+                "@pingme_self_test",
                 if self.self_test { "1" } else { "0" }.to_owned(),
             ),
             (
-                "@cli_bridge_placement",
+                "@pingme_placement",
                 self.placement
                     .map(PanePlacement::as_str)
                     .unwrap_or_default()
                     .to_owned(),
             ),
             (
-                "@cli_bridge_last_slack_prompt_fingerprint",
+                "@pingme_last_slack_prompt_fingerprint",
                 self.last_slack_prompt.clone().unwrap_or_default(),
             ),
             (
-                "@cli_bridge_notify_socket",
+                "@pingme_notify_socket",
                 self.notify_socket.clone().unwrap_or_default(),
             ),
             (
-                "@cli_bridge_notify_token",
+                "@pingme_notify_token",
                 self.notify_token.clone().unwrap_or_default(),
             ),
             (
-                "@cli_bridge_status_file",
+                "@pingme_status_file",
                 self.status_file.clone().unwrap_or_default(),
             ),
-            ("@cli_bridge_session_name", self.session_name.clone()),
+            ("@pingme_session_name", self.session_name.clone()),
         ]
     }
 }
@@ -596,11 +596,11 @@ mod tests {
             .into_iter()
             .map(|(name, _)| name)
             .collect();
-        assert_eq!(Some("@cli_bridge_session_name"), keys.last().copied());
+        assert_eq!(Some("@pingme_session_name"), keys.last().copied());
         assert_eq!(
             1,
             keys.iter()
-                .filter(|name| **name == "@cli_bridge_session_name")
+                .filter(|name| **name == "@pingme_session_name")
                 .count()
         );
     }

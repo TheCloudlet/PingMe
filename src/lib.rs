@@ -11,7 +11,7 @@ pub use session::{AgentSession, HostSettings, PanePlacement, ProjectSetting, Ses
 pub const SELF_TEST_PROMPT: &str = "Respond with exactly roundtrip-ok";
 
 pub fn self_test_message(token: &str) -> String {
-    format!("__cli_bridge_self_test__:{token}: {SELF_TEST_PROMPT}")
+    format!("__pingme_self_test__:{token}: {SELF_TEST_PROMPT}")
 }
 
 pub struct CliResult {
@@ -131,19 +131,19 @@ fn launch_agent(
 
     let cwd = current_dir(env);
     let project = local_project(&setting, &cwd);
-    let self_test = env.contains_key("CLI_BRIDGE_SELF_TEST");
+    let self_test = env.contains_key("PINGME_SELF_TEST");
     let status_file = env
-        .get("CLI_BRIDGE_STATUS_FILE")
+        .get("PINGME_STATUS_FILE")
         .filter(|path| !path.is_empty())
         .map(|path| (*path).to_owned());
     if self_test && status_file.is_none() {
-        return fail("missing environment variable CLI_BRIDGE_STATUS_FILE\n".to_owned());
+        return fail("missing environment variable PINGME_STATUS_FILE\n".to_owned());
     }
     if status_file
         .as_deref()
         .is_some_and(|path| path.contains(['\t', '\n', '\r']))
     {
-        return fail("CLI_BRIDGE_STATUS_FILE contains unsupported control characters\n".to_owned());
+        return fail("PINGME_STATUS_FILE contains unsupported control characters\n".to_owned());
     }
     let session_name =
         match services.available_session_name(&format!("{agent_cli}-{}", project.name)) {
@@ -212,7 +212,7 @@ pub fn render_session_status_card(session: &AgentSession) -> String {
         SessionStatus::Unavailable
     };
     format!(
-        "CLI Bridge Session\nAgent: {}\nSession: {}\nStatus: {}\nHost: {}\nProject: {}\ncwd: {}\nPane: {}\nThread: {}",
+        "PingMe Session\nAgent: {}\nSession: {}\nStatus: {}\nHost: {}\nProject: {}\ncwd: {}\nPane: {}\nThread: {}",
         session.agent_cli,
         session.session_name,
         status.as_str(),
@@ -350,7 +350,7 @@ pub fn slack_photo_extension(mimetype: &str) -> Option<&'static str> {
 
 pub fn session_update_after_prompt_paste(paste: Result<(), String>, agent_cli: &str) -> String {
     match paste {
-        Ok(()) => "--> (Beep! Cli received your message!)".to_owned(),
+        Ok(()) => "--> (Beep! PingMe received your message!)".to_owned(),
         Err(error) => format!(
             "Not executed: failed to send prompt to {}: {error}",
             agent_display_name(agent_cli)
@@ -393,7 +393,7 @@ pub fn slack_photo_store_path(thread_ts: &str, photo: &SlackFile) -> Result<Stri
         })
         .collect();
     Ok(std::env::temp_dir()
-        .join("cli-bridge-photos")
+        .join("pingme-photos")
         .join(safe_thread)
         .join(format!("{}.{extension}", photo.id))
         .display()
@@ -554,7 +554,7 @@ fn parse_setting(setting_toml: &str) -> Result<HostSettings, String> {
 }
 
 fn usage() -> String {
-    "usage: cli-bridge <codex|grok|list|attach <session-name>|cleanup>\n".to_owned()
+    "usage: pingme <codex|grok|list|attach <session-name>|cleanup>\n".to_owned()
 }
 
 pub fn agent_display_name(agent_cli: &str) -> &str {
@@ -638,8 +638,8 @@ control_channel_id = "C_TEST_CONTROL"
 operator_id = "U_TEST_OPERATOR"
 
 [[projects]]
-name = "cli-bridge"
-cwd = "/work/cli-bridge"
+name = "pingme"
+cwd = "/work/pingme"
 "#;
 
     #[derive(Default)]
@@ -704,7 +704,7 @@ cwd = "/work/cli-bridge"
             let mut session = session;
             session.pane_id = Some("%7".to_owned());
             session.tmux_session = tmux_session;
-            session.notify_socket = Some("/tmp/cli-bridge-test.sock".to_owned());
+            session.notify_socket = Some("/tmp/pingme-test.sock".to_owned());
             session.notify_token = Some("notify-token".to_owned());
             Ok(session)
         }
@@ -736,7 +736,7 @@ cwd = "/work/cli-bridge"
         BTreeMap::from([
             ("SLACK_APP_TOKEN", "xapp-test"),
             ("SLACK_BOT_TOKEN", "xoxb-test"),
-            ("PWD", "/work/cli-bridge"),
+            ("PWD", "/work/pingme"),
         ])
     }
 
@@ -749,8 +749,8 @@ cwd = "/work/cli-bridge"
             session_name,
             "codex",
             "linux",
-            "cli-bridge",
-            "/work/cli-bridge",
+            "pingme",
+            "/work/pingme",
             "C_TEST_CONTROL",
             "U_TEST_OPERATOR",
             PanePlacement::DetachedWindow,
@@ -850,19 +850,19 @@ cwd = "/work/cli-bridge"
         let env = BTreeMap::from([
             ("SLACK_APP_TOKEN", "xapp-test"),
             ("SLACK_BOT_TOKEN", "xoxb-test"),
-            ("PWD", "/work/cli-bridge"),
-            ("CLI_BRIDGE_SELF_TEST", "1"),
-            ("CLI_BRIDGE_STATUS_FILE", "/tmp/cli-bridge.status"),
+            ("PWD", "/work/pingme"),
+            ("PINGME_SELF_TEST", "1"),
+            ("PINGME_STATUS_FILE", "/tmp/pingme.status"),
         ]);
         let mut services = FakeServices::default();
 
-        let result = run_cli_with_services(&["cli-bridge", "codex"], SETTING, &env, &mut services);
+        let result = run_cli_with_services(&["pingme", "codex"], SETTING, &env, &mut services);
 
         assert_eq!(0, result.exit_code);
         let registration = services.registered_session.unwrap();
         assert!(registration.self_test);
         assert_eq!(
-            Some("/tmp/cli-bridge.status"),
+            Some("/tmp/pingme.status"),
             registration.status_file.as_deref()
         );
     }
@@ -876,8 +876,7 @@ cwd = "/work/cli-bridge"
         env.insert("TMUX_PANE", "%7");
         for agent in ["codex", "grok"] {
             let mut services = FakeServices::default();
-            let result =
-                run_cli_with_services(&["cli-bridge", agent], SETTING, &env, &mut services);
+            let result = run_cli_with_services(&["pingme", agent], SETTING, &env, &mut services);
 
             assert_eq!(0, result.exit_code);
             assert_eq!(
@@ -906,7 +905,7 @@ cwd = "/work/cli-bridge"
 
         let mut services = FakeServices::default();
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -933,7 +932,7 @@ cwd = "/work/cli-bridge"
     fn unbridged_local_launch_inside_tmux_reuses_the_current_pane() {
         let env = BTreeMap::from([("TMUX", "/tmp/tmux-1000/default,1,0"), ("TMUX_PANE", "%7")]);
         let mut services = FakeServices::default();
-        let result = run_cli_with_services(&["cli-bridge", "codex"], SETTING, &env, &mut services);
+        let result = run_cli_with_services(&["pingme", "codex"], SETTING, &env, &mut services);
 
         assert_eq!(0, result.exit_code);
         let session = result.attachment.unwrap();
@@ -943,8 +942,8 @@ cwd = "/work/cli-bridge"
 
     #[test]
     fn accepts_local_launch_commands() {
-        let codex = run_cli(&["cli-bridge", "codex"], SETTING, &env_with_tokens());
-        let grok = run_cli(&["cli-bridge", "grok"], SETTING, &env_with_tokens());
+        let codex = run_cli(&["pingme", "codex"], SETTING, &env_with_tokens());
+        let grok = run_cli(&["pingme", "grok"], SETTING, &env_with_tokens());
 
         assert_eq!(0, codex.exit_code);
         assert!(codex.stdout.contains("launching Codex CLI"));
@@ -956,7 +955,7 @@ cwd = "/work/cli-bridge"
     fn local_codex_creates_slack_thread_before_launching_codex() {
         let mut services = FakeServices::default();
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -980,15 +979,15 @@ cwd = "/work/cli-bridge"
             services.calls
         );
         assert_eq!(
-            "codex-cli-bridge",
+            "codex-pingme",
             services.created_session.as_ref().unwrap().session_name
         );
         assert_eq!(
-            "codex-cli-bridge",
+            "codex-pingme",
             services.spawned_session.as_ref().unwrap().session_name
         );
         assert_eq!(
-            "/work/cli-bridge",
+            "/work/pingme",
             services.spawned_session.as_ref().unwrap().cwd
         );
         assert_eq!(
@@ -1007,24 +1006,24 @@ cwd = "/work/cli-bridge"
         );
         let card = services.updated_card.unwrap();
         assert!(card.contains("Agent: codex"));
-        assert!(card.contains("Session: codex-cli-bridge"));
+        assert!(card.contains("Session: codex-pingme"));
         assert!(card.contains("Status: idle"));
         assert!(card.contains("Host: linux"));
-        assert!(card.contains("Project: cli-bridge"));
-        assert!(card.contains("cwd: /work/cli-bridge"));
+        assert!(card.contains("Project: pingme"));
+        assert!(card.contains("cwd: /work/pingme"));
         assert!(card.contains("Pane: %7"));
         assert!(card.contains("Thread: 1757221923.123456"));
         let registration = services.registered_session.unwrap();
         assert_eq!("C_TEST_CONTROL", registration.control_channel);
         assert_eq!("U_TEST_OPERATOR", registration.operator);
         assert_eq!(Some("1757221923.123456"), registration.thread_ts.as_deref());
-        assert_eq!("codex-cli-bridge", registration.session_name);
+        assert_eq!("codex-pingme", registration.session_name);
         assert_eq!("linux", registration.host);
-        assert_eq!("cli-bridge", registration.project);
-        assert_eq!("/work/cli-bridge", registration.cwd);
+        assert_eq!("pingme", registration.project);
+        assert_eq!("/work/pingme", registration.cwd);
         assert_eq!(Some("%7"), registration.pane_id.as_deref());
         assert_eq!(
-            Some("/tmp/cli-bridge-test.sock"),
+            Some("/tmp/pingme-test.sock"),
             registration.notify_socket.as_deref()
         );
         assert_eq!(Some("notify-token"), registration.notify_token.as_deref());
@@ -1034,7 +1033,7 @@ cwd = "/work/cli-bridge"
     fn local_grok_uses_the_same_slack_session_flow() {
         let mut services = FakeServices::default();
         let result = run_cli_with_services(
-            &["cli-bridge", "grok"],
+            &["pingme", "grok"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -1052,7 +1051,7 @@ cwd = "/work/cli-bridge"
         );
         assert_eq!("grok", services.created_session.as_ref().unwrap().agent_cli);
         assert_eq!(
-            "grok-cli-bridge",
+            "grok-pingme",
             services.spawned_session.as_ref().unwrap().session_name
         );
         assert_eq!(
@@ -1065,12 +1064,12 @@ cwd = "/work/cli-bridge"
     #[test]
     fn local_launch_uses_an_available_session_name() {
         let mut services = FakeServices {
-            next_session_name: Some("codex-cli-bridge-2".to_owned()),
+            next_session_name: Some("codex-pingme-2".to_owned()),
             ..FakeServices::default()
         };
 
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -1078,7 +1077,7 @@ cwd = "/work/cli-bridge"
 
         assert_eq!(0, result.exit_code);
         assert_eq!(
-            "codex-cli-bridge-2",
+            "codex-pingme-2",
             services.created_session.unwrap().session_name
         );
     }
@@ -1098,11 +1097,11 @@ cwd = "/work/cli-bridge"
             PanePlacement::DetachedSession { attach: false },
         ] {
             let mut session = AgentSession::for_launch(
-                "codex-cli-bridge",
+                "codex-pingme",
                 "codex",
                 "linux",
-                "cli-bridge",
-                "/work/cli-bridge",
+                "pingme",
+                "/work/pingme",
                 "C_TEST_CONTROL",
                 "U_TEST_OPERATOR",
                 placement,
@@ -1131,7 +1130,7 @@ cwd = "/work/cli-bridge"
             ..FakeServices::default()
         };
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -1148,7 +1147,7 @@ cwd = "/work/cli-bridge"
             ..FakeServices::default()
         };
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -1197,7 +1196,7 @@ cwd = "/work/cli-bridge"
 
     #[test]
     fn updates_same_root_message_for_status_changes() {
-        let mut session = listed_session("codex-cli-bridge", "%7", "1757221923.123456");
+        let mut session = listed_session("codex-pingme", "%7", "1757221923.123456");
         let mut services = FakeServices::default();
 
         for status in [
@@ -1475,10 +1474,10 @@ cwd = "/work/cli-bridge"
     #[test]
     fn prompt_with_photos_appends_local_paths() {
         assert_eq!(
-            "/tmp/cli-bridge-photos/1757221923.123456/F123PNG.png",
+            "/tmp/pingme-photos/1757221923.123456/F123PNG.png",
             prompt_with_local_photos(
                 "",
-                &["/tmp/cli-bridge-photos/1757221923.123456/F123PNG.png".to_owned()]
+                &["/tmp/pingme-photos/1757221923.123456/F123PNG.png".to_owned()]
             )
         );
         assert_eq!(
@@ -1493,11 +1492,11 @@ cwd = "/work/cli-bridge"
     #[test]
     fn successful_prompt_paste_posts_received_session_update() {
         assert_eq!(
-            "--> (Beep! Cli received your message!)",
+            "--> (Beep! PingMe received your message!)",
             session_update_after_prompt_paste(Ok(()), "codex")
         );
         assert_eq!(
-            "--> (Beep! Cli received your message!)",
+            "--> (Beep! PingMe received your message!)",
             session_update_after_prompt_paste(Ok(()), "grok")
         );
     }
@@ -1518,7 +1517,7 @@ cwd = "/work/cli-bridge"
             channel_id: "C_TEST_CONTROL",
             thread_ts: Some("1757221923.123456"),
             user_id: Some("U_BRIDGE_BOT"),
-            text: "--> (Beep! Cli received your message!)",
+            text: "--> (Beep! PingMe received your message!)",
             has_subtype: false,
             is_bot: true,
             event_ts: Some("1757221925.000000"),
@@ -1544,7 +1543,7 @@ cwd = "/work/cli-bridge"
         )
         .unwrap();
         assert!(
-            path.ends_with("cli-bridge-photos/1757221923.123456/F123PNG.png"),
+            path.ends_with("pingme-photos/1757221923.123456/F123PNG.png"),
             "{path}"
         );
     }
@@ -1555,13 +1554,13 @@ cwd = "/work/cli-bridge"
             command: "/cli-new",
             channel_id: "C_TEST_CONTROL",
             user_id: "U_TEST_OPERATOR",
-            text: "codex cli-bridge",
+            text: "codex pingme",
         };
 
         assert_eq!(
             ControlAction::NewSession {
                 agent_cli: "codex".to_owned(),
-                project_name: "cli-bridge".to_owned()
+                project_name: "pingme".to_owned()
             },
             control_action(&command, "C_TEST_CONTROL", "U_TEST_OPERATOR")
         );
@@ -1596,7 +1595,7 @@ cwd = "/work/cli-bridge"
             ..FakeServices::default()
         };
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -1617,7 +1616,7 @@ cwd = "/work/cli-bridge"
     fn local_codex_falls_back_to_unbridged_when_slack_tokens_are_missing() {
         let mut services = FakeServices::default();
         let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
+            &["pingme", "codex"],
             SETTING,
             &BTreeMap::new(),
             &mut services,
@@ -1638,19 +1637,19 @@ cwd = "/work/cli-bridge"
     fn accepts_local_management_commands() {
         let mut services = FakeServices::default();
         let list = run_cli_with_services(
-            &["cli-bridge", "list"],
+            &["pingme", "list"],
             SETTING,
             &env_with_tokens(),
             &mut services,
         );
         let attach = run_cli_with_services(
-            &["cli-bridge", "attach", "codex-cli-bridge-1420"],
+            &["pingme", "attach", "codex-pingme-1420"],
             SETTING,
             &env_with_tokens(),
             &mut services,
         );
         let cleanup = run_cli_with_services(
-            &["cli-bridge", "cleanup"],
+            &["pingme", "cleanup"],
             SETTING,
             &env_with_tokens(),
             &mut services,
@@ -1659,7 +1658,7 @@ cwd = "/work/cli-bridge"
         assert_eq!(0, list.exit_code);
         assert!(list.stdout.contains("no Agent Sessions"));
         assert_eq!(0, attach.exit_code);
-        assert!(attach.stdout.contains("attached: codex-cli-bridge-1420"));
+        assert!(attach.stdout.contains("attached: codex-pingme-1420"));
         assert_eq!(0, cleanup.exit_code);
         assert!(
             cleanup
@@ -1671,21 +1670,17 @@ cwd = "/work/cli-bridge"
 
     #[test]
     fn parses_setting_toml() {
-        let result = run_cli(&["cli-bridge", "list"], SETTING, &env_with_tokens());
+        let result = run_cli(&["pingme", "list"], SETTING, &env_with_tokens());
 
         assert_eq!(0, result.exit_code);
         assert!(result.stdout.contains("Host: linux"));
         assert!(result.stdout.contains("Control Channel: C_TEST_CONTROL"));
-        assert!(
-            result
-                .stdout
-                .contains("Project: cli-bridge -> /work/cli-bridge")
-        );
+        assert!(result.stdout.contains("Project: pingme -> /work/pingme"));
     }
 
     #[test]
     fn reports_missing_slack_tokens_without_leaking_values() {
-        let result = run_cli(&["cli-bridge", "list"], SETTING, &BTreeMap::new());
+        let result = run_cli(&["pingme", "list"], SETTING, &BTreeMap::new());
 
         assert_eq!(2, result.exit_code);
         assert!(
@@ -1705,12 +1700,8 @@ cwd = "/work/cli-bridge"
     #[test]
     fn local_codex_falls_back_to_unbridged_when_setting_toml_is_missing() {
         let mut services = FakeServices::default();
-        let result = run_cli_with_services(
-            &["cli-bridge", "codex"],
-            "",
-            &env_with_tokens(),
-            &mut services,
-        );
+        let result =
+            run_cli_with_services(&["pingme", "codex"], "", &env_with_tokens(), &mut services);
 
         assert_eq!(0, result.exit_code);
         assert_eq!(vec!["spawn_agent"], services.calls);
@@ -1721,7 +1712,7 @@ cwd = "/work/cli-bridge"
 
     #[test]
     fn reports_missing_setting_toml_for_management_commands() {
-        let result = run_cli(&["cli-bridge", "list"], "", &env_with_tokens());
+        let result = run_cli(&["pingme", "list"], "", &env_with_tokens());
 
         assert_eq!(2, result.exit_code);
         assert!(result.stderr.contains("setting.toml is missing or empty"));
@@ -1729,10 +1720,10 @@ cwd = "/work/cli-bridge"
 
     #[test]
     fn reports_unknown_commands_with_usage() {
-        let result = run_cli(&["cli-bridge", "wat"], SETTING, &env_with_tokens());
+        let result = run_cli(&["pingme", "wat"], SETTING, &env_with_tokens());
 
         assert_eq!(2, result.exit_code);
         assert!(result.stderr.contains("unknown command: wat"));
-        assert!(result.stderr.contains("usage: cli-bridge"));
+        assert!(result.stderr.contains("usage: pingme"));
     }
 }

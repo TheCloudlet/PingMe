@@ -70,7 +70,7 @@ A channel is a room. This app needs a **private** one so strangers cannot drive 
 
 1. In Slack in the browser, click the **plus sign** in the left sidebar.
 2. Select **Channel**. On a paid plan you may see **Blank channel** — pick that (a regular channel, not a template).
-3. Enter a name, for example `cli-bridge`.
+3. Enter a name, for example `pingme`.
 4. Choose **Private** (not public).
 5. Click **Create**.
 6. If Slack asks you to add people, add nobody. Click **Skip for now** if that button is there.
@@ -104,7 +104,7 @@ Each computer gets its own Slack app. Do not share this app with another machine
 3. Open [https://api.slack.com/apps?new_app=1](https://api.slack.com/apps?new_app=1), or click **Create New App** if that button is on **Your Apps**.
 4. A dialog **Create an app** asks how to configure scopes. Click **From scratch** (not **From a manifest**).
 5. Heading becomes **Name app & choose workspace**.
-6. **App Name**: type `cli-bridge` (placeholder on the form is `e.g. Super Service`). You can change the name later.
+6. **App Name**: type `pingme` (placeholder on the form is `e.g. Super Service`). You can change the name later.
 7. **Pick a workspace to develop your app in:** choose the workspace from step 2. You cannot move the app later.
 8. Click **Create App**.
 
@@ -173,7 +173,7 @@ If you added scopes or events after the first install, open **OAuth & Permission
 Apps do not join by themselves.
 
 1. Open the private channel from step 3.
-2. In the message box, type `/invite @cli-bridge` (use the app name you chose) and send.
+2. In the message box, type `/invite @pingme` (use the app name you chose) and send.
 3. Or: click the channel name → **Integrations** → add the app.
 
 You should see a system line that the app was added. Leave the channel with only you and this bot.
@@ -183,7 +183,7 @@ You should see a system line that the app was added. Leave the channel with only
 Clone this repo (or download it) and work in that folder. `setting.toml` is read from the **current working directory**, not from where the binary is installed.
 
 ```sh
-cd /path/to/cli-bridge
+cd /path/to/pingme
 cp setting.example.toml setting.toml
 ```
 
@@ -194,10 +194,10 @@ Edit `setting.toml`. Each field:
 | `[host] name` | A short name for this computer | `"laptop"` | You pick it. Shown on the Slack session card. |
 | `[slack] control_channel_id` | The private channel | `"C0123456789"` | Channel ID from step 3 |
 | `[slack] operator_id` | You | `"U0123456789"` | Member ID from step 3 |
-| `[[projects]] name` | A short name Slack uses in `/cli-new` | `"cli-bridge"` | You pick it. Must match `/cli-new grok cli-bridge`. |
-| `[[projects]] cwd` | Absolute folder Slack is allowed to start in | `"/home/you/code/cli-bridge"` | A real directory on this computer |
+| `[[projects]] name` | A short name Slack uses in `/cli-new` | `"pingme"` | You pick it. Must match `/cli-new grok pingme`. |
+| `[[projects]] cwd` | Absolute folder Slack is allowed to start in | `"/home/you/code/pingme"` | A real directory on this computer |
 
-Add one `[[projects]]` block per folder you will launch from Slack. Local `cli-bridge grok` can start in any folder; Slack `/cli-new` can only start in these names.
+Add one `[[projects]]` block per folder you will launch from Slack. Local `pingme grok` can start in any folder; Slack `/cli-new` can only start in these names.
 
 `setting.toml` is gitignored. Never put tokens in it.
 
@@ -207,7 +207,7 @@ Still in the clone folder:
 
 ```sh
 cargo install --path .
-which cli-bridge
+which pingme
 ```
 
 Tokens live in the environment only:
@@ -221,7 +221,7 @@ Use your real tokens. Do not put them in this repo, in `setting.toml`, or in a s
 
 ## 7. First success
 
-The Host daemon is the background process that listens to Slack. `cli-bridge daemon` is an internal command (it is not listed in `cli-bridge` usage). Local `cli-bridge grok` / `codex` will start it **if** you run them from the folder that contains `setting.toml` and the tokens are exported. Slack `/cli-new` does nothing if that daemon is not already running.
+The Host daemon is the background process that listens to Slack. `pingme daemon` is an internal command (it is not listed in `pingme` usage). Local `pingme grok` / `codex` will start it **if** you run them from the folder that contains `setting.toml` and the tokens are exported. Slack `/cli-new` does nothing if that daemon is not already running.
 
 1. Export the two tokens (step 6).
 2. `cd` to the clone folder (the one with `setting.toml`).
@@ -229,10 +229,10 @@ The Host daemon is the background process that listens to Slack. `cli-bridge dae
 4. Start the daemon from the clone folder:
 
    ```sh
-   cd /path/to/cli-bridge
+   cd /path/to/pingme
    export SLACK_APP_TOKEN='xapp-...'
    export SLACK_BOT_TOKEN='xoxb-...'
-   cli-bridge daemon
+   pingme daemon
    ```
 
    Leave that terminal running, or use the always-on snippet in step 8.
@@ -241,15 +241,15 @@ The Host daemon is the background process that listens to Slack. `cli-bridge dae
    ```sh
    export SLACK_APP_TOKEN='xapp-...'
    export SLACK_BOT_TOKEN='xoxb-...'
-   cli-bridge grok
+   pingme grok
    ```
 
-   (Use `cli-bridge codex` if that is the Agent CLI you installed.)
+   (Use `pingme codex` if that is the Agent CLI you installed.)
 6. Slack gets a new thread. The root message is the session card.
 7. In that thread, type a short sentence and send.
-8. You should see `--> (Beep! Cli received your message!)` in the thread, and the same sentence appear in the Agent CLI on this computer.
+8. You should see `--> (Beep! PingMe received your message!)` in the thread, and the same sentence appear in the Agent CLI on this computer.
 
-If the daemon is down: local `cli-bridge grok` still opens the Agent CLI (unbridged if Slack setup cannot run). Slack messages sent while it is down are **not** replayed later.
+If the daemon is down: local `pingme grok` still opens the Agent CLI (unbridged if Slack setup cannot run). Slack messages sent while it is down are **not** replayed later.
 
 ## 8. Always-on daemon (so Slack works after reboot)
 
@@ -257,31 +257,31 @@ Put tokens in a file that is **not** this git repo, mode `600`:
 
 ```sh
 mkdir -p "$HOME/.config"
-cat > "$HOME/.config/cli-bridge.env" <<'EOF'
+cat > "$HOME/.config/pingme.env" <<'EOF'
 export SLACK_APP_TOKEN='xapp-replace-me'
 export SLACK_BOT_TOKEN='xoxb-replace-me'
-export CLI_BRIDGE_HOME='/path/to/cli-bridge'
+export PINGME_HOME='/path/to/pingme'
 EOF
-chmod 600 "$HOME/.config/cli-bridge.env"
+chmod 600 "$HOME/.config/pingme.env"
 ```
 
 Paste this function in `~/.bashrc` or `~/.zshrc`. It `cd`s to the folder that contains `setting.toml`, then starts the daemon:
 
 ```sh
-cli-bridge-up() {
+pingme-up() {
   # shellcheck disable=SC1090
-  . "$HOME/.config/cli-bridge.env"
-  cd "$CLI_BRIDGE_HOME" || return
-  exec cli-bridge daemon
+  . "$HOME/.config/pingme.env"
+  cd "$PINGME_HOME" || return
+  exec pingme daemon
 }
 ```
 
 Start it at login, in tmux, so it survives a closed terminal:
 
 ```sh
-tmux new-session -d -s cli-bridge 'bash -lc cli-bridge-up'
+tmux new-session -d -s pingme 'bash -lc pingme-up'
 ```
 
 To do that automatically on Linux, add the `tmux new-session` line to `~/.bash_profile` or a desktop autostart script. This is a copy-paste snippet, not a packaged service.
 
-Local `cli-bridge grok` from a project folder will reuse this daemon if it is already running. Slack `/cli-new` needs it running first.
+Local `pingme grok` from a project folder will reuse this daemon if it is already running. Slack `/cli-new` needs it running first.

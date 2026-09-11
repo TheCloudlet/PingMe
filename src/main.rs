@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Write as _;
 use std::process::ExitCode;
 
-use cli_bridge::{
+use pingme::{
     RealServices, attach_or_switch_agent_tui, run_cli_with_services, run_daemon_process,
     run_notify_process,
 };
@@ -63,12 +63,12 @@ fn env_values() -> BTreeMap<&'static str, String> {
                 .unwrap_or_else(|_| ".".to_owned()),
         ),
         (
-            "CLI_BRIDGE_SELF_TEST",
-            env::var("CLI_BRIDGE_SELF_TEST").unwrap_or_default(),
+            "PINGME_SELF_TEST",
+            env::var("PINGME_SELF_TEST").unwrap_or_default(),
         ),
         (
-            "CLI_BRIDGE_STATUS_FILE",
-            env::var("CLI_BRIDGE_STATUS_FILE").unwrap_or_default(),
+            "PINGME_STATUS_FILE",
+            env::var("PINGME_STATUS_FILE").unwrap_or_default(),
         ),
         ("TMUX", env::var("TMUX").unwrap_or_default()),
         ("TMUX_PANE", env::var("TMUX_PANE").unwrap_or_default()),

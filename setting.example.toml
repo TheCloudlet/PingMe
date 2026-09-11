@@ -6,5 +6,5 @@ control_channel_id = "C0123456789"
 operator_id = "U0123456789"
 
 [[projects]]
-name = "cli-bridge"
+name = "pingme"
 cwd = "/syshome/sys01/cloudlet.pan/playground/cli-bridge"

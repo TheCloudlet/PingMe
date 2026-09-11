@@ -77,7 +77,7 @@ command -v tmux >/dev/null 2>&1 || fail 'tmux is unavailable'
 command -v "$provider" >/dev/null 2>&1 || fail "$provider is unavailable"
 
 umask 077
-secret_dir=$(mktemp -d "/tmp/cli-bridge-${provider}-smoke.XXXXXX") || fail 'failed to create temporary directory'
+secret_dir=$(mktemp -d "/tmp/pingme-${provider}-smoke.XXXXXX") || fail 'failed to create temporary directory'
 status_file=$secret_dir/status
 agent_env=$secret_dir/agent.env
 curl_config=$secret_dir/curl.conf
@@ -94,9 +94,9 @@ channel_id=$(printf '%s\n' "$settings" | sed -n 's/^Control Channel: //p' | head
 
 window_pane=$(tmux new-window \
     -d -P -F '#{window_id} #{pane_id}' \
-    -n "cli-bridge-${provider}-smoke-$$" \
+    -n "pingme-${provider}-smoke-$$" \
     -c "$repo" \
-    ". $agent_env; export SLACK_APP_TOKEN SLACK_BOT_TOKEN; env CLI_BRIDGE_SELF_TEST=1 CLI_BRIDGE_STATUS_FILE=$status_file cargo run --quiet -- $provider") \
+    ". $agent_env; export SLACK_APP_TOKEN SLACK_BOT_TOKEN; env PINGME_SELF_TEST=1 PINGME_STATUS_FILE=$status_file cargo run --quiet -- $provider") \
     || fail 'failed to create temporary tmux window'
 set -- $window_pane
 window_id=$1
@@ -104,17 +104,17 @@ pane_id=$2
 
 attempt=0
 while [ "$attempt" -lt 6000 ]; do
-    status=$(tmux display-message -p -t "$pane_id" '#{@cli_bridge_status}') \
+    status=$(tmux display-message -p -t "$pane_id" '#{@pingme_status}') \
         || fail 'Agent CLI pane ended before becoming Busy'
     if [ "$status" = busy ]; then
-        thread_ts=$(tmux display-message -p -t "$pane_id" '#{@cli_bridge_thread_ts}') \
+        thread_ts=$(tmux display-message -p -t "$pane_id" '#{@pingme_thread_ts}') \
             || fail 'Session Thread identity is unavailable'
-        notify_token=$(tmux display-message -p -t "$pane_id" '#{@cli_bridge_notify_token}') \
+        notify_token=$(tmux display-message -p -t "$pane_id" '#{@pingme_notify_token}') \
             || fail 'self-test notification token is unavailable'
         body=$(jq -n \
             --arg channel "$channel_id" \
             --arg thread_ts "$thread_ts" \
-            --arg text "__cli_bridge_self_test__:${notify_token}: Respond with exactly roundtrip-ok" \
+            --arg text "__pingme_self_test__:${notify_token}: Respond with exactly roundtrip-ok" \
             '{channel: $channel, thread_ts: $thread_ts, text: $text}') \
             || fail 'failed to encode Busy probe'
         response=$(curl -sS \
@@ -154,7 +154,7 @@ busy_rejections=$(printf '%s' "$replies" | jq \
     '[.messages[] | select(.text == "Not executed: session is busy.")] | length') \
     || fail 'failed to inspect Busy rejection'
 beeps=$(printf '%s' "$replies" | jq \
-    '[.messages[] | select(.text == "--&gt; (Beep! Cli received your message!)")] | length') \
+    '[.messages[] | select(.text == "--&gt; (Beep! PingMe received your message!)")] | length') \
     || fail 'failed to inspect prompt receipt Beep'
 expected_response=$(printf '*%s*\nroundtrip-ok' "$agent_name")
 final_responses=$(printf '%s' "$replies" | jq --arg expected "$expected_response" \
