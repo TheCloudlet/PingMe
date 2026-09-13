@@ -45,19 +45,19 @@ Arguments after `grok` or `codex` are passed through to that Agent CLI.
 In Slack, in the private channel:
 
 ```
-/cli-new grok my-project
-/cli-new grok my-project --resume <session-id>
-/cli-new codex my-project
-/cli-new codex my-project resume <session-id>
+/pingme grok my-project
+/pingme grok my-project --resume <session-id>
+/pingme codex my-project
+/pingme codex my-project resume <session-id>
 ```
 
 In that session’s thread, type normally. The bot replies `(ping grok)` or `(ping codex)` when the prompt has been pasted into the Agent CLI. The answer arrives as `(pong grok)` or `(pong codex)`, then the body. Rejected prompts are `(reject grok busy)`, `(reject grok stale)`, `(reject grok unauthorized)`, or `(reject grok unavailable)`.
 
 Thread controls (type these as the whole message):
 
-- `cli-stop` — interrupt work without ending the session
-- `cli-name` — show the session name
-- `cli-rename new-name` — rename the session
+- `pingme stop` — interrupt work without ending the session
+- `pingme name` — show the session name
+- `pingme rename new-name` — rename the session
 
 Paste a photo (png, jpeg, and other images). The Agent CLI gets a **local file path**, not a magic clipboard paste.
 

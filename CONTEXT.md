@@ -39,7 +39,7 @@ _Avoid_: Session channel, direct message
 
 **Session Launcher**:
 The Control Channel affordance from which the Operator creates a new Agent
-Session. In the prototype this is the `/cli-new` Slack Bridge Command.
+Session. In the prototype this is the `/pingme` Slack Bridge Command.
 _Avoid_: Session thread, prompt
 
 **Session Thread**:
@@ -63,12 +63,13 @@ _Avoid_: Transcript, event, stream
 
 **Slack Bridge Command**:
 A Slack slash command owned by PingMe. Slack Bridge Commands start with
-`/cli-` and control the bridge rather than sending a prompt to an Agent CLI.
+`/pingme` and control the bridge rather than sending a prompt to an Agent CLI.
 _Avoid_: Prompt, Agent CLI command, provider slash command
 
 **Thread Control Message**:
-A normal Slack message inside a Session Thread that starts with `cli-` and
-controls that thread's Agent Session.
+A normal Slack message inside a Session Thread: `pingme stop`, `pingme name`,
+or `pingme rename <name>`. Slash commands are not available inside Session
+Threads, so these are ordinary messages rather than `/pingme` invocations.
 _Avoid_: Slack slash command, prompt
 
 **Stop**:

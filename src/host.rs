@@ -1989,7 +1989,7 @@ mod tests {
     }
 
     #[test]
-    fn recorded_cli_stop_decides_to_stop_without_ending_the_session() {
+    fn recorded_pingme_stop_decides_to_stop_without_ending_the_session() {
         let envelopes = recorded_slack_envelopes();
         let message = thread_message_from_envelope(&envelopes["operator_stop"]).unwrap();
         let session = test_session(

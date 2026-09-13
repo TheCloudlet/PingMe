@@ -132,7 +132,7 @@ Socket Mode means Slack talks to this computer over a websocket. You do not host
    | Scope | Why |
    | --- | --- |
    | `chat:write` | Post, update, and delete messages in the channel |
-   | `commands` | The `/cli-new` slash command |
+   | `commands` | The `/pingme` slash command |
    | `files:read` | Download photos you paste |
    | `groups:history` | Read messages in the private channel |
    | `groups:read` | See the private channel |
@@ -151,7 +151,7 @@ Socket Mode means Slack talks to this computer over a websocket. You do not host
 5. Add `message.groups` (messages in private channels).
 6. Save if Slack shows **Save Changes**.
 
-### Slash command `/cli-new`
+### Slash command `/pingme`
 
 1. Left sidebar **Features** → **Slash Commands**.
 2. Click **Create New Command**.
@@ -159,8 +159,8 @@ Socket Mode means Slack talks to this computer over a websocket. You do not host
 
    | Field | Value |
    | --- | --- |
-   | **Command** | `/cli-new` |
-   | **Request URL** | If Slack still requires one with Socket Mode on, enter `https://example.com`. The Host daemon receives `/cli-new` over the websocket, not that URL. |
+   | **Command** | `/pingme` |
+   | **Request URL** | If Slack still requires one with Socket Mode on, enter `https://example.com`. The Host daemon receives `/pingme` over the websocket, not that URL. |
    | **Short Description** | Start an Agent Session |
    | **Usage Hint** | `grok my-project` or `codex my-project` |
 
@@ -194,10 +194,10 @@ Edit `setting.toml`. Each field:
 | `[host] name` | A short name for this computer | `"laptop"` | You pick it. Shown on the Slack session card. |
 | `[slack] control_channel_id` | The private channel | `"C0123456789"` | Channel ID from step 3 |
 | `[slack] operator_id` | You | `"U0123456789"` | Member ID from step 3 |
-| `[[projects]] name` | A short name Slack uses in `/cli-new` | `"pingme"` | You pick it. Must match `/cli-new grok pingme`. |
+| `[[projects]] name` | A short name Slack uses in `/pingme` | `"pingme"` | You pick it. Must match `/pingme grok pingme`. |
 | `[[projects]] cwd` | Absolute folder Slack is allowed to start in | `"/home/you/code/pingme"` | A real directory on this computer |
 
-Add one `[[projects]]` block per folder you will launch from Slack. Local `pingme grok` can start in any folder; Slack `/cli-new` can only start in these names.
+Add one `[[projects]]` block per folder you will launch from Slack. Local `pingme grok` can start in any folder; Slack `/pingme` can only start in these names.
 
 `setting.toml` is gitignored. Never put tokens in it.
 
@@ -221,7 +221,7 @@ Use your real tokens. Do not put them in this repo, in `setting.toml`, or in a s
 
 ## 7. First success
 
-The Host daemon is the background process that listens to Slack. `pingme daemon` is an internal command (it is not listed in `pingme` usage). Local `pingme grok` / `codex` will start it **if** you run them from the folder that contains `setting.toml` and the tokens are exported. Slack `/cli-new` does nothing if that daemon is not already running.
+The Host daemon is the background process that listens to Slack. `pingme daemon` is an internal command (it is not listed in `pingme` usage). Local `pingme grok` / `codex` will start it **if** you run them from the folder that contains `setting.toml` and the tokens are exported. Slack `/pingme` does nothing if that daemon is not already running.
 
 1. Export the two tokens (step 6).
 2. `cd` to the clone folder (the one with `setting.toml`).
@@ -284,4 +284,4 @@ tmux new-session -d -s pingme 'bash -lc pingme-up'
 
 To do that automatically on Linux, add the `tmux new-session` line to `~/.bash_profile` or a desktop autostart script. This is a copy-paste snippet, not a packaged service.
 
-Local `pingme grok` from a project folder will reuse this daemon if it is already running. Slack `/cli-new` needs it running first.
+Local `pingme grok` from a project folder will reuse this daemon if it is already running. Slack `/pingme` needs it running first.

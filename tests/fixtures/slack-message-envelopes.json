@@ -34,7 +34,7 @@
       "event": {
         "type": "message",
         "user": "U_OPERATOR",
-        "text": "cli-stop",
+        "text": "pingme stop",
         "ts": "1757221924.100000",
         "thread_ts": "1757221923.123456",
         "channel": "C_CONTROL",

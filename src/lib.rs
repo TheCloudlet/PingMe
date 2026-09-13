@@ -264,13 +264,13 @@ pub fn thread_action(
         };
     }
     match text {
-        "cli-stop" => ThreadAction::Stop,
-        "cli-name" => ThreadAction::Name,
+        "pingme stop" => ThreadAction::Stop,
+        "pingme name" => ThreadAction::Name,
         _ => {
-            if let Some(name) = text.strip_prefix("cli-rename ") {
+            if let Some(name) = text.strip_prefix("pingme rename ") {
                 let name = name.trim();
                 if name.is_empty() {
-                    ThreadAction::Reject("usage: cli-rename <new-session-name>".to_owned())
+                    ThreadAction::Reject("usage: pingme rename <new-session-name>".to_owned())
                 } else {
                     ThreadAction::Rename(name.to_owned())
                 }
@@ -425,7 +425,7 @@ pub fn control_action(
     control_channel_id: &str,
     operator_id: &str,
 ) -> ControlAction {
-    if command.command != "/cli-new" || command.channel_id != control_channel_id {
+    if command.command != "/pingme" || command.channel_id != control_channel_id {
         return ControlAction::Ignore;
     }
     if command.user_id != operator_id {
@@ -436,7 +436,7 @@ pub fn control_action(
     let project_name = words.next().unwrap_or("").to_owned();
     if agent_cli.is_empty() || project_name.is_empty() {
         return ControlAction::Reject(
-            "usage: /cli-new <codex|grok> <project> [agent-args...]".to_owned(),
+            "usage: /pingme <codex|grok> <project> [agent-args...]".to_owned(),
         );
     }
     ControlAction::NewSession {
@@ -1358,7 +1358,7 @@ cwd = "/work/pingme"
             ThreadAction::Stop,
             thread_action(
                 &ThreadMessage {
-                    text: "cli-stop",
+                    text: "pingme stop",
                     ..base.clone()
                 },
                 "C_TEST_CONTROL",
@@ -1371,7 +1371,7 @@ cwd = "/work/pingme"
             ThreadAction::Name,
             thread_action(
                 &ThreadMessage {
-                    text: "cli-name",
+                    text: "pingme name",
                     ..base.clone()
                 },
                 "C_TEST_CONTROL",
@@ -1384,7 +1384,7 @@ cwd = "/work/pingme"
             ThreadAction::Rename("better-name".to_owned()),
             thread_action(
                 &ThreadMessage {
-                    text: "cli-rename better-name",
+                    text: "pingme rename better-name",
                     ..base.clone()
                 },
                 "C_TEST_CONTROL",
@@ -1394,10 +1394,23 @@ cwd = "/work/pingme"
             )
         );
         assert_eq!(
-            ThreadAction::Prompt("please write about cli-stop".to_owned()),
+            ThreadAction::Prompt("please write about pingme stop".to_owned()),
             thread_action(
                 &ThreadMessage {
-                    text: "please write about cli-stop",
+                    text: "please write about pingme stop",
+                    ..base.clone()
+                },
+                "C_TEST_CONTROL",
+                "1757221923.123456",
+                "U_TEST_OPERATOR",
+                "codex",
+            )
+        );
+        assert_eq!(
+            ThreadAction::Prompt("cli-stop".to_owned()),
+            thread_action(
+                &ThreadMessage {
+                    text: "cli-stop",
                     ..base.clone()
                 },
                 "C_TEST_CONTROL",
@@ -1630,9 +1643,9 @@ cwd = "/work/pingme"
     }
 
     #[test]
-    fn recognizes_cli_new_control_command() {
+    fn recognizes_pingme_control_command() {
         let command = ControlCommand {
-            command: "/cli-new",
+            command: "/pingme",
             channel_id: "C_TEST_CONTROL",
             user_id: "U_TEST_OPERATOR",
             text: "codex pingme",
@@ -1662,6 +1675,17 @@ cwd = "/work/pingme"
             control_action(
                 &ControlCommand {
                     channel_id: "COTHER",
+                    ..command
+                },
+                "C_TEST_CONTROL",
+                "U_TEST_OPERATOR",
+            )
+        );
+        assert_eq!(
+            ControlAction::Ignore,
+            control_action(
+                &ControlCommand {
+                    command: "/cli-new",
                     ..command
                 },
                 "C_TEST_CONTROL",
@@ -1900,9 +1924,9 @@ cwd = "/work/pingme"
     }
 
     #[test]
-    fn cli_new_forwards_codex_resume_after_the_project() {
+    fn pingme_slash_forwards_codex_resume_after_the_project() {
         let command = ControlCommand {
-            command: "/cli-new",
+            command: "/pingme",
             channel_id: "C_TEST_CONTROL",
             user_id: "U_TEST_OPERATOR",
             text: "codex pingme resume session-id",
@@ -1919,9 +1943,9 @@ cwd = "/work/pingme"
     }
 
     #[test]
-    fn cli_new_forwards_agent_args_after_the_project() {
+    fn pingme_slash_forwards_agent_args_after_the_project() {
         let command = ControlCommand {
-            command: "/cli-new",
+            command: "/pingme",
             channel_id: "C_TEST_CONTROL",
             user_id: "U_TEST_OPERATOR",
             text: "grok pingme --resume 01a090da-d3ba-7bb1-8cc0-aab11beccab6",
