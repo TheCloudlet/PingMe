@@ -5,8 +5,8 @@ use std::io::Write as _;
 use std::process::ExitCode;
 
 use pingme::{
-    RealServices, attach_or_switch_agent_tui, run_cli_with_services, run_daemon_process,
-    run_notify_process, setting_path,
+    RealServices, attach_or_switch_agent_tui, current_tmux_pane, run_cli_with_services,
+    run_daemon_process, run_notify_process, setting_path,
 };
 
 fn main() -> ExitCode {
@@ -47,6 +47,7 @@ fn main() -> ExitCode {
 }
 
 fn env_values() -> BTreeMap<&'static str, String> {
+    let tmux_pane = current_tmux_pane();
     BTreeMap::from([
         (
             "SLACK_APP_TOKEN",
@@ -70,7 +71,13 @@ fn env_values() -> BTreeMap<&'static str, String> {
             "PINGME_STATUS_FILE",
             env::var("PINGME_STATUS_FILE").unwrap_or_default(),
         ),
-        ("TMUX", env::var("TMUX").unwrap_or_default()),
-        ("TMUX_PANE", env::var("TMUX_PANE").unwrap_or_default()),
+        (
+            "TMUX",
+            tmux_pane
+                .as_ref()
+                .and_then(|_| env::var("TMUX").ok())
+                .unwrap_or_default(),
+        ),
+        ("TMUX_PANE", tmux_pane.unwrap_or_default()),
     ])
 }

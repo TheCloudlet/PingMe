@@ -698,7 +698,7 @@ async fn launch_remote_agent(
         &project.cwd,
         &setting.slack.control_channel_id,
         &setting.slack.operator_id,
-        pane_placement(false, env::var("TMUX").is_ok()),
+        pane_placement(false, current_tmux_pane().is_some()),
     );
     session.agent_args = agent_args;
     let session = tokio::task::block_in_place(|| services.create_session_thread(session))?;
@@ -1522,11 +1522,8 @@ fn spawn_agent_tui(session: AgentSession) -> Result<AgentSession, String> {
         .ok_or_else(|| "launch Session has no pane placement".to_owned())?
     {
         PanePlacement::ReuseCurrentPane => {
-            let pane_id = env::var("TMUX_PANE")
-                .map_err(|_| "missing environment variable TMUX_PANE".to_owned())?;
-            if pane_id.is_empty() {
-                return Err("missing environment variable TMUX_PANE".to_owned());
-            }
+            let pane_id = current_tmux_pane()
+                .ok_or_else(|| "current terminal is not the configured TMUX_PANE".to_owned())?;
             let mut session = session;
             session.pane_id = Some(pane_id);
             session.notify_socket = notify_socket;
@@ -1670,6 +1667,8 @@ fn post_self_test_prompt(
 
 fn attach_tmux_session(target: &str) -> Result<(), String> {
     let status = Command::new("tmux")
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
         .args(["attach-session", "-t", target])
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -1811,6 +1810,27 @@ fn grok_final_response(notification: &Value) -> Option<&str> {
 fn notify_arg() -> Option<String> {
     let executable = env::current_exe().ok()?.display().to_string();
     serde_json::to_string(&vec![executable, "notify".to_owned()]).ok()
+}
+
+pub fn current_tmux_pane() -> Option<String> {
+    let pane_id = env::var("TMUX_PANE")
+        .ok()
+        .filter(|pane_id| !pane_id.is_empty())?;
+    let current_tty = Command::new("tty")
+        .stdin(Stdio::inherit())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    if !current_tty.status.success() {
+        return None;
+    }
+    let current_tty = String::from_utf8(current_tty.stdout).ok()?;
+    let pane_tty = tmux_output(&["display-message", "-p", "-t", &pane_id, "#{pane_tty}"]).ok()?;
+    terminal_paths_match(&current_tty, &pane_tty).then_some(pane_id)
+}
+
+fn terminal_paths_match(current_tty: &str, pane_tty: &str) -> bool {
+    current_tty.trim() == pane_tty.trim()
 }
 
 fn tmux_output(args: &[&str]) -> Result<String, String> {
@@ -2407,6 +2427,12 @@ mod tests {
             ),
             command
         );
+    }
+
+    #[test]
+    fn inherited_tmux_pane_must_match_the_current_terminal() {
+        assert!(terminal_paths_match("/dev/pts/31\n", "/dev/pts/31\n"));
+        assert!(!terminal_paths_match("/dev/pts/31\n", "/dev/pts/19\n"));
     }
 
     #[test]

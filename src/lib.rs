@@ -8,7 +8,10 @@ mod session;
 mod slack_socket;
 
 pub use bridge::{Bridge, RoutedThreadAction, StartedSession};
-pub use host::{RealServices, attach_or_switch_agent_tui, run_daemon_process, run_notify_process};
+pub use host::{
+    RealServices, attach_or_switch_agent_tui, current_tmux_pane, run_daemon_process,
+    run_notify_process,
+};
 pub use session::{AgentSession, HostSettings, PanePlacement, ProjectSetting, SessionStatus};
 
 pub const SELF_TEST_PROMPT: &str = "Respond with exactly roundtrip-ok";
