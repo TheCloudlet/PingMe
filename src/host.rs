@@ -15,7 +15,7 @@ use crate::{
     ThreadMessage, accepted_slack_photos, agent_display_name, apply_host_routing_policy,
     control_action, pane_placement, prompt_with_local_photos, render_session_status_card,
     self_test_message, session_update_after_agent_turn, session_update_after_prompt_paste,
-    session_update_reject, slack_file_url_is_downloadable, slack_photo_store_path,
+    session_update_reject, setting_path, slack_file_url_is_downloadable, slack_photo_store_path,
 };
 use serde_json::Value;
 use tokio::io::AsyncReadExt;
@@ -586,7 +586,7 @@ fn try_lock_host_daemon(socket_path: &str) -> Result<File, String> {
 
 fn read_file_setting() -> Result<HostSettings, String> {
     HostSettings::parse(
-        &fs::read_to_string("setting.toml")
+        &fs::read_to_string(setting_path())
             .map_err(|error| format!("failed to read setting.toml: {error}"))?,
     )
 }

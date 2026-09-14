@@ -180,7 +180,7 @@ You should see a system line that the app was added. Leave the channel with only
 
 ## 5. `setting.toml` on this computer
 
-Clone this repo (or download it) and work in that folder. `setting.toml` is read from the **current working directory**, not from where the binary is installed.
+Clone this repo (or download it) and work in that folder. By default, `setting.toml` is read from the current working directory. Set `PINGME_HOME` to the clone folder to use the same settings from any project directory.
 
 ```sh
 cd /path/to/pingme
@@ -221,7 +221,7 @@ Use your real tokens. Do not put them in this repo, in `setting.toml`, or in a s
 
 ## 7. First success
 
-The Host daemon is the background process that listens to Slack. `pingme daemon` is an internal command (it is not listed in `pingme` usage). Local `pingme grok` / `codex` will start it **if** you run them from the folder that contains `setting.toml` and the tokens are exported. Slack `/pingme` does nothing if that daemon is not already running.
+The Host daemon is the background process that listens to Slack. `pingme daemon` is an internal command (it is not listed in `pingme` usage). Local `pingme grok` / `codex` will start it when the tokens are exported and `setting.toml` is in the current directory or `PINGME_HOME`. Slack `/pingme` does nothing if that daemon is not already running.
 
 1. Export the two tokens (step 6).
 2. `cd` to the clone folder (the one with `setting.toml`).
@@ -265,13 +265,12 @@ EOF
 chmod 600 "$HOME/.config/pingme.env"
 ```
 
-Paste this function in `~/.bashrc` or `~/.zshrc`. It `cd`s to the folder that contains `setting.toml`, then starts the daemon:
+Paste this function in `~/.bashrc` or `~/.zshrc` to start the daemon:
 
 ```sh
 pingme-up() {
   # shellcheck disable=SC1090
   . "$HOME/.config/pingme.env"
-  cd "$PINGME_HOME" || return
   exec pingme daemon
 }
 ```

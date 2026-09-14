@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::path::PathBuf;
 
 mod bridge;
 mod host;
@@ -10,6 +12,16 @@ pub use host::{RealServices, attach_or_switch_agent_tui, run_daemon_process, run
 pub use session::{AgentSession, HostSettings, PanePlacement, ProjectSetting, SessionStatus};
 
 pub const SELF_TEST_PROMPT: &str = "Respond with exactly roundtrip-ok";
+
+pub fn setting_path() -> PathBuf {
+    setting_path_from_home(std::env::var_os("PINGME_HOME").as_deref())
+}
+
+fn setting_path_from_home(home: Option<&OsStr>) -> PathBuf {
+    home.map(PathBuf::from)
+        .unwrap_or_default()
+        .join("setting.toml")
+}
 
 pub fn self_test_message(token: &str) -> String {
     format!("__pingme_self_test__:{token}: {SELF_TEST_PROMPT}")
@@ -1814,6 +1826,18 @@ cwd = "/work/pingme"
         assert_eq!(None, services.spawned_session.unwrap().thread_ts);
         assert!(result.stderr.contains("setting.toml is missing or empty"));
         assert!(result.stderr.contains("launching unbridged Codex CLI"));
+    }
+
+    #[test]
+    fn pingme_home_selects_setting_toml_without_changing_the_project_directory() {
+        assert_eq!(
+            std::path::Path::new("/opt/pingme/setting.toml"),
+            setting_path_from_home(Some(std::ffi::OsStr::new("/opt/pingme")))
+        );
+        assert_eq!(
+            std::path::Path::new("setting.toml"),
+            setting_path_from_home(None)
+        );
     }
 
     #[test]

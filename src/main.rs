@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use pingme::{
     RealServices, attach_or_switch_agent_tui, run_cli_with_services, run_daemon_process,
-    run_notify_process,
+    run_notify_process, setting_path,
 };
 
 fn main() -> ExitCode {
@@ -25,7 +25,7 @@ fn main() -> ExitCode {
         .filter(|(_, value)| !value.is_empty())
         .map(|(key, value)| (*key, value.as_str()))
         .collect();
-    let setting_toml = fs::read_to_string("setting.toml").unwrap_or_default();
+    let setting_toml = fs::read_to_string(setting_path()).unwrap_or_default();
     let bot_token = env_values
         .get("SLACK_BOT_TOKEN")
         .cloned()
