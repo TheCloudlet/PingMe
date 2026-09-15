@@ -7,4 +7,4 @@ operator_id = "U0123456789"
 
 [[projects]]
 name = "pingme"
-cwd = "/syshome/sys01/cloudlet.pan/playground/cli-bridge"
+cwd = "/home/you/code/pingme"

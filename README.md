@@ -20,7 +20,9 @@ You do not need a company Slack. A personal workspace is enough. Create one if y
 - A Slack workspace (create one during setup if needed)
 - `tmux`
 - `codex` and/or `grok` already installed and logged in
-- Rust (`cargo`) to install this binary
+- Rust 1.88+ (`cargo`) to install this binary. Edition 2024 will not build on an older `rustc`.
+
+The binary is `pingme`. Homebrew already has a different `pingme` ([kha7iq/pingme](https://github.com/kha7iq/pingme)). GitHub can keep this repo name; `cargo install` / `$PATH` cannot share that command.
 
 ## Setup
 
@@ -67,6 +69,17 @@ Paste a photo (png, jpeg, and other images). The Agent CLI gets a **local file p
 - Messages sent while this computer is offline are dropped. They are not delivered later.
 - Photos become paths on this computer.
 - One prompt at a time. If the session is busy, a second prompt is rejected.
+- The first `pingme grok` writes `~/.grok/hooks/pingme.json`. It will not replace a different file already there.
+
+## Security
+
+This is a remote control for coding agents on this computer. A sentence in Slack is pasted into `grok` or `codex` here. Those tools can run whatever they are allowed to run on this host.
+
+- Use a **private** channel with only you and this bot.
+- Only the Slack member ID in `setting.toml` is the Operator. Anyone else is ignored.
+- Keep `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN` in the environment. Never commit them. `setting.toml` is gitignored; do not put tokens there either.
+- Messages sent while this computer is offline are dropped. They are not delivered later.
+- Photos you paste become ordinary files on this computer.
 
 ## License
 

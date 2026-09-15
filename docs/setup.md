@@ -13,9 +13,10 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 which rustc
 which cargo
+rustc --version
 ```
 
-`which` should print a path. If it prints nothing, open a new terminal and try again.
+`which` should print a path. If it prints nothing, open a new terminal and try again. `rustc --version` must be **1.88 or newer** (this crate uses edition 2024). If it is older, run `rustup update stable` and open a new terminal.
 
 tmux (keeps the Agent CLI alive if you disconnect):
 
@@ -42,6 +43,8 @@ codex  # first launch asks you to sign in; quit after it works
 ```
 
 You only need the Agent CLI you will actually use.
+
+The first `pingme grok` writes `~/.grok/hooks/pingme.json` so this computer hears when a Grok turn ends. It does not overwrite a different file already at that path.
 
 ## 2. Slack workspace
 
@@ -129,13 +132,13 @@ Socket Mode means Slack talks to this computer over a websocket. You do not host
 2. Scroll to **Scopes** → **Bot Token Scopes**.
 3. Click **Add an OAuth Scope** for each of these (search the name, pick it):
 
-   | Scope | Why |
-   | --- | --- |
-   | `chat:write` | Post, update, and delete messages in the channel |
-   | `commands` | The `/pingme` slash command |
-   | `files:read` | Download photos you paste |
-   | `groups:history` | Read messages in the private channel |
-   | `groups:read` | See the private channel |
+   | Scope            | Why                                              |
+   |------------------|--------------------------------------------------|
+   | `chat:write`     | Post, update, and delete messages in the channel |
+   | `commands`       | The `/pingme` slash command                      |
+   | `files:read`     | Download photos you paste                        |
+   | `groups:history` | Read messages in the private channel             |
+   | `groups:read`    | See the private channel                          |
 
 4. Scroll to the top of **OAuth & Permissions**.
 5. Click **Install to Workspace** (or **Reinstall to Workspace** if you add scopes later).
