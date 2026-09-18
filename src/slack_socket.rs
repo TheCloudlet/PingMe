@@ -447,6 +447,17 @@ async fn run_connection(
                             let _ = events.send(ConnEvent::Died(id));
                             return;
                         }
+                        if reason == "too_many_websockets" {
+                            // Slack is telling us we already hold too many open
+                            // connections. Overlapping (dialing another one before
+                            // closing this one) would only add to that count and
+                            // spins into a reconnect storm that burns the API rate
+                            // limit. Drop this connection first and let the normal
+                            // backed-off Down/Rebuilding path reconnect.
+                            eprintln!("Slack Socket Mode has too many open websockets, backing off");
+                            let _ = events.send(ConnEvent::Died(id));
+                            return;
+                        }
                         eprintln!("Slack requested reconnect ({reason})");
                         let _ = events.send(ConnEvent::Overlap(id));
                     }
@@ -714,6 +725,25 @@ mod tests {
         );
         assert!(slack.epoch() >= epoch);
         assert_ne!(epoch, slack.epoch());
+    }
+
+    #[tokio::test]
+    async fn too_many_websockets_rebuilds_without_overlapping() {
+        let (dialer, mut dials) = test_pair();
+        let mut slack = start_with(dialer, test_config());
+        let conn1 = connect_hello(&mut dials).await;
+        wait_state(&slack, ConnectionState::Up).await;
+
+        conn1.send_disconnect("too_many_websockets");
+        wait_state(&slack, ConnectionState::Rebuilding).await;
+        let conn2 = connect_hello(&mut dials).await;
+        wait_state(&slack, ConnectionState::Up).await;
+        conn2.send_event("next-1", "back");
+        let envelope = recv_envelope(&mut slack).await;
+        assert_eq!(
+            Some("next-1"),
+            envelope.get("envelope_id").and_then(Value::as_str)
+        );
     }
 
     #[tokio::test]
