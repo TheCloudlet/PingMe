@@ -23,6 +23,7 @@ const TMUX_REGISTRY_FORMAT: &str = concat!(
     "self_test=#{@pingme_self_test}\t",
     "status_file=#{@pingme_status_file}\t",
     "last_slack_prompt=#{@pingme_last_slack_prompt_fingerprint}\t",
+    "mirrored_terminal_count=#{@pingme_mirrored_terminal_count}\t",
     "placement=#{@pingme_placement}",
 );
 
@@ -75,6 +76,10 @@ pub struct AgentSession {
     pub notify_token: Option<String>,
     pub status_file: Option<String>,
     pub last_slack_prompt: Option<String>,
+    /// Count of the Agent CLI's `input-messages` already mirrored to the
+    /// Session Thread as terminal-typed prompts. Prevents re-mirroring the
+    /// same terminal history on every subsequent turn notification.
+    pub mirrored_terminal_count: usize,
     /// Live pane. False means cards and Busy routing treat the Session as Unavailable.
     pub available: bool,
     pub self_test: bool,
@@ -143,6 +148,7 @@ impl AgentSession {
             notify_token: None,
             status_file: None,
             last_slack_prompt: None,
+            mirrored_terminal_count: 0,
             available: true,
             self_test: false,
         }
@@ -184,6 +190,15 @@ impl AgentSession {
                 ));
             }
         };
+        let mirrored_terminal_count = fields
+            .get("mirrored_terminal_count")
+            .copied()
+            .filter(|value| !value.is_empty())
+            .unwrap_or("0")
+            .parse::<usize>()
+            .map_err(|_| {
+                format!("Agent Session {session_name} has invalid mirrored_terminal_count")
+            })?;
         Ok(Some(Self {
             session_name,
             agent_cli,
@@ -204,6 +219,7 @@ impl AgentSession {
             notify_token: optional_field(&fields, "notify_token"),
             status_file: optional_field(&fields, "status_file"),
             last_slack_prompt: optional_field(&fields, "last_slack_prompt"),
+            mirrored_terminal_count,
             available,
             self_test,
         }))
@@ -290,6 +306,16 @@ impl AgentSession {
             fingerprint.as_deref().unwrap_or(""),
         )?;
         self.set_last_slack_prompt(fingerprint);
+        Ok(())
+    }
+
+    pub fn write_mirrored_terminal_count(&mut self, count: usize) -> Result<(), String> {
+        set_registry_field(
+            self.registry_pane()?,
+            "@pingme_mirrored_terminal_count",
+            &count.to_string(),
+        )?;
+        self.mirrored_terminal_count = count;
         Ok(())
     }
 
@@ -408,6 +434,10 @@ impl AgentSession {
             (
                 "@pingme_last_slack_prompt_fingerprint",
                 self.last_slack_prompt.clone().unwrap_or_default(),
+            ),
+            (
+                "@pingme_mirrored_terminal_count",
+                self.mirrored_terminal_count.to_string(),
             ),
             (
                 "@pingme_notify_socket",
